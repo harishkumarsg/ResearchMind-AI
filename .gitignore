@@ -1,0 +1,42 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Uploaded files (too large for git)
+backend/uploads/
+
+# Generated reports
+backend/latest_report.txt
+backend/latest_sources.txt
+backend/ResearchMind_Report.pdf
+backend/research_report.pdf
+
+# Node
+node_modules/
+research-compass-main/node_modules/
+
+# Build outputs
+research-compass-main/.output/
+research-compass-main/dist/
+research-compass-main/.vinxi/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
