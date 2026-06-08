@@ -1,8 +1,20 @@
+import os
+
 from sentence_transformers import CrossEncoder
 
-cross_encoder = CrossEncoder(
-    "cross-encoder/ms-marco-MiniLM-L-6-v2"
-)
+_cross_encoder = None
+
+
+def _rerank_enabled() -> bool:
+    # Keep cloud instances stable on low memory by default.
+    return os.environ.get("RERANK_ENABLED", "false").lower() == "true"
+
+
+def _get_cross_encoder():
+    global _cross_encoder
+    if _cross_encoder is None:
+        _cross_encoder = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+    return _cross_encoder
 
 MAX_RERANK = 5
 
@@ -14,6 +26,10 @@ def rerank_results(
 
     if not results:
         return []
+
+    # On low-memory environments, skip cross-encoder and keep vector order.
+    if not _rerank_enabled():
+        return results[:MAX_RERANK]
 
     results = results[:MAX_RERANK]
 
@@ -28,7 +44,7 @@ def rerank_results(
         for hit in results
     ]
 
-    scores = cross_encoder.predict(
+    scores = _get_cross_encoder().predict(
         pairs,
         show_progress_bar=False
     )
