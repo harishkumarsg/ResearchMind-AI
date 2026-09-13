@@ -16,6 +16,8 @@ import {
   X,
 } from "lucide-react";
 import { deletePaper, getPapers } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
+import { queryKeys } from "@/lib/query-keys";
 
 const sidebarNav = [
   { to: "/dashboard", label: "Workspace", icon: Home },
@@ -26,26 +28,50 @@ const sidebarNav = [
   { to: "/compare", label: "Compare", icon: GitCompare },
 ];
 
-export function AppShell({ children, title, subtitle, actions }: { children: ReactNode; title: string; subtitle?: string; actions?: ReactNode }) {
+export function AppShell({
+  children,
+  title,
+  subtitle,
+  actions,
+}: {
+  children: ReactNode;
+  title: string;
+  subtitle?: string;
+  actions?: ReactNode;
+}) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const qc = useQueryClient();
   const [deletingPaper, setDeletingPaper] = useState<string | null>(null);
+  const { session, user, isLoading: authLoading, signInWithGoogle, signOut } = useAuth();
+  const userId = user?.id;
 
   const { data: papers = [] } = useQuery({
-    queryKey: ["papers"],
+    queryKey: queryKeys.papers(userId),
     queryFn: getPapers,
     staleTime: 30_000,
+    // Never fetch before the session resolves — an unauthenticated call
+    // would throw AuthenticationRequiredError and burn retries.
+    enabled: !!userId,
   });
 
   const handleDeletePaper = async (e: React.MouseEvent, paperName: string) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!confirm(`Delete "${paperName.replace(/_/g, " ")}"?\n\nThis will permanently remove the PDF and all indexed vectors.`)) return;
+    if (
+      !confirm(
+        `Delete "${paperName.replace(/_/g, " ")}"?\n\nThis will permanently remove the PDF and all indexed vectors.`,
+      )
+    )
+      return;
     setDeletingPaper(paperName);
     try {
       await deletePaper(paperName);
-      qc.invalidateQueries({ queryKey: ["papers"] });
-      qc.invalidateQueries({ queryKey: ["stats"] });
+      qc.invalidateQueries({ queryKey: queryKeys.papers(userId) });
+      qc.invalidateQueries({ queryKey: queryKeys.stats(userId) });
+      // Search now has its own namespace, so it is no longer swept up by
+      // the ["papers"] prefix — invalidate it explicitly so results for a
+      // deleted paper don't linger.
+      qc.invalidateQueries({ queryKey: queryKeys.searchAll() });
     } catch {
       // ignore — paper details page also shows the error
     } finally {
@@ -57,13 +83,20 @@ export function AppShell({ children, title, subtitle, actions }: { children: Rea
     <div className="min-h-screen bg-background text-foreground">
       <div className="grid min-h-screen grid-cols-[260px_1fr]">
         <aside className="sticky top-0 hidden h-screen flex-col border-r border-border/60 bg-sidebar md:flex">
-          <Link to="/" className="flex h-14 items-center gap-2 border-b border-border/60 px-5 text-[15px] font-medium tracking-tight">
-            <span className="grid h-7 w-7 place-items-center rounded-md bg-primary text-primary-foreground text-xs">R</span>
+          <Link
+            to="/"
+            className="flex h-14 items-center gap-2 border-b border-border/60 px-5 text-[15px] font-medium tracking-tight"
+          >
+            <span className="grid h-7 w-7 place-items-center rounded-md bg-primary text-primary-foreground text-xs">
+              R
+            </span>
             ResearchMind
           </Link>
           <div className="px-3 pt-4">
             <button className="flex w-full items-center justify-between rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-muted-foreground hover:text-foreground">
-              <span className="flex items-center gap-2"><Search className="h-3.5 w-3.5" /> Search…</span>
+              <span className="flex items-center gap-2">
+                <Search className="h-3.5 w-3.5" /> Search…
+              </span>
               <span className="font-mono text-[10px]">⌘K</span>
             </button>
           </div>
@@ -71,7 +104,11 @@ export function AppShell({ children, title, subtitle, actions }: { children: Rea
             {sidebarNav.map((item) => {
               const active = pathname === item.to;
               return (
-                <Link key={item.to} to={item.to} className={`flex items-center gap-2.5 rounded-md px-3 py-2 text-[13px] ${active ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"}`}>
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  className={`flex items-center gap-2.5 rounded-md px-3 py-2 text-[13px] ${active ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"}`}
+                >
                   <item.icon className="h-3.5 w-3.5" strokeWidth={1.75} />
                   {item.label}
                 </Link>
@@ -127,10 +164,31 @@ export function AppShell({ children, title, subtitle, actions }: { children: Rea
               </div>
             )}
           </nav>
-          <div className="border-t border-border/60 p-3">
-            <button className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-[13px] text-muted-foreground hover:text-foreground">
-              <Settings className="h-3.5 w-3.5" /> Settings
-            </button>
+          <div className="border-t border-border/60 p-3 space-y-1">
+            {!authLoading && session ? (
+              <>
+                <div
+                  className="truncate px-3 py-1 text-[12px] text-muted-foreground"
+                  title={user?.email ?? ""}
+                >
+                  {user?.email ?? "Signed in"}
+                </div>
+                <button
+                  onClick={() => signOut()}
+                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-[13px] text-muted-foreground hover:text-foreground"
+                >
+                  <Settings className="h-3.5 w-3.5" /> Sign out
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => signInWithGoogle()}
+                disabled={authLoading}
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-[13px] text-muted-foreground hover:text-foreground"
+              >
+                <Settings className="h-3.5 w-3.5" /> Sign in with Google
+              </button>
+            )}
           </div>
         </aside>
         <main className="min-w-0">

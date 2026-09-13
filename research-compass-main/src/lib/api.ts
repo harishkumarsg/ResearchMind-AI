@@ -1,6 +1,46 @@
-export const API_BASE_URL =
-  (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_API_BASE_URL) ||
-  "http://localhost:8000";
+import { getSupabaseClient } from "@/lib/supabase";
+
+export const API_BASE_URL = import.meta.env?.VITE_API_BASE_URL || "http://localhost:8000";
+
+// ============================================================
+// Auth
+// ============================================================
+
+/**
+ * Thrown when a protected call is attempted with no active Supabase
+ * session. Every route's existing catch/error-display logic surfaces
+ * this like any other API error — there is never a silent fallback to
+ * an unauthenticated request.
+ */
+export class AuthenticationRequiredError extends Error {
+  constructor(message = "You must be signed in to do this.") {
+    super(message);
+    this.name = "AuthenticationRequiredError";
+  }
+}
+
+async function getAccessToken(): Promise<string | null> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return null;
+  const { data } = await supabase.auth.getSession();
+  return data.session?.access_token ?? null;
+}
+
+/**
+ * The ONE centralized authenticated request path. Every protected backend
+ * call goes through this — do not re-implement token fetching per call
+ * site or per component. Throws AuthenticationRequiredError rather than
+ * silently sending an unauthenticated request when there's no session.
+ */
+async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  const token = await getAccessToken();
+  if (!token) {
+    throw new AuthenticationRequiredError();
+  }
+  const headers = new Headers(options.headers);
+  headers.set("Authorization", `Bearer ${token}`);
+  return fetch(url, { ...options, headers });
+}
 
 // ============================================================
 // Types
@@ -18,26 +58,94 @@ export interface Citation {
   paper: string;
   source: string;
   page: number;
+  /**
+   * Set by the backend: true when the answer explicitly cited this
+   * passage's page. Evidence that was supplied to the model but not
+   * cited is still returned (never filtered out) so the disclosed
+   * evidence set stays exactly the set the model was given.
+   */
+  cited?: boolean;
 }
 
-export interface AskResult {
-  status: string;
-  answer: string;
-  citations: Citation[];
-  sources: Citation[];
+/**
+ * Splits the backend's evidence set into what the answer actually cited
+ * versus what was retrieved and supplied but went unused. Purely a read
+ * of the backend's `cited` flag — this never parses the answer text and
+ * never reconstructs citations client-side.
+ */
+export function partitionCitations(citations: Citation[]): {
+  cited: Citation[];
+  alsoRetrieved: Citation[];
+} {
+  return {
+    cited: citations.filter((c) => c.cited),
+    alsoRetrieved: citations.filter((c) => !c.cited),
+  };
 }
 
 export interface UploadResult {
   message: string;
+  paper_id: string;
   filename: string;
+  status: string;
   saved_path: string;
+  duplicate?: boolean;
 }
 
+export interface IndexedPaper {
+  paper_id: string;
+  points: number;
+}
+
+export interface FailedPaper {
+  paper_id: string;
+  error: string;
+}
+
+// Matches the real /index-document response shape exactly — this
+// previously declared pdfs_indexed/chunks_indexed, fields the backend
+// has never actually returned, which is why the upload success banner
+// used to read "Indexed undefined PDFs · undefined chunks stored in
+// Qdrant" regardless of outcome.
 export interface IndexResult {
   status: string;
+  papers_found: number;
+  papers_indexed: number;
+  papers_failed: number;
+  indexed: IndexedPaper[];
+  failed: FailedPaper[];
+}
+
+export interface IndexOutcome {
+  kind: "indexed" | "already-indexed" | "failed";
   message: string;
-  pdfs_indexed: number;
-  chunks_indexed: number;
+}
+
+/**
+ * Turns a raw /index-document response into an unambiguous outcome + a
+ * human-readable message built only from fields the backend actually
+ * returns. papers_indexed === 0 is NOT necessarily a failure (it also
+ * means "nothing new to index, already indexed") — only papers_failed > 0
+ * is a real failure.
+ */
+export function describeIndexResult(result: IndexResult): IndexOutcome {
+  if (result.papers_indexed > 0) {
+    const totalChunks = result.indexed.reduce((sum, p) => sum + (p.points ?? 0), 0);
+    return {
+      kind: "indexed",
+      message: `Indexed ${result.papers_indexed} PDF${result.papers_indexed !== 1 ? "s" : ""} · ${totalChunks} chunk${totalChunks !== 1 ? "s" : ""} stored in Qdrant`,
+    };
+  }
+  if (result.papers_failed > 0) {
+    return {
+      kind: "failed",
+      message: result.failed[0]?.error || "Indexing failed for the uploaded paper.",
+    };
+  }
+  return {
+    kind: "already-indexed",
+    message: "This paper is already indexed and ready to search and ask.",
+  };
 }
 
 export interface SummarizeResult {
@@ -91,14 +199,20 @@ export interface DashboardStats {
   recent_papers: string[];
 }
 
+export interface AskStreamEvent {
+  type: "status" | "token" | "done" | "error";
+  text?: string;
+  citations?: Citation[];
+  sources?: Citation[];
+  is_followup?: boolean;
+}
+
 // ============================================================
 // Core APIs
 // ============================================================
 
 export async function searchPapers(query: string): Promise<SearchResult[]> {
-  const response = await fetch(
-    `${API_BASE_URL}/search?query=${encodeURIComponent(query)}`
-  );
+  const response = await authFetch(`${API_BASE_URL}/search?query=${encodeURIComponent(query)}`);
   const data = await response.json();
   if (data.status !== "success") {
     throw new Error(data.message || "Search failed");
@@ -106,33 +220,92 @@ export async function searchPapers(query: string): Promise<SearchResult[]> {
   return data.results;
 }
 
-export async function askQuestion(question: string): Promise<AskResult> {
-  const response = await fetch(
-    `${API_BASE_URL}/ask?question=${encodeURIComponent(question)}`
-  );
-  const data = await response.json();
-  if (data.status !== "success") {
-    throw new Error(data.message || "Ask failed");
+/**
+ * Streams /ask-stream via fetch() + a manual SSE reader — deliberately
+ * NOT EventSource, which cannot set custom request headers and so has no
+ * way to carry Authorization: Bearer <token>. The token is sent as a
+ * normal header here; it is never placed in the URL/query string.
+ */
+export async function streamAskQuestion(
+  question: string,
+  onEvent: (event: AskStreamEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const token = await getAccessToken();
+  if (!token) {
+    throw new AuthenticationRequiredError();
   }
-  return data;
+
+  const url = `${API_BASE_URL}/ask-stream?question=${encodeURIComponent(question)}`;
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+    signal,
+  });
+
+  if (!response.ok || !response.body) {
+    if (response.status === 401) {
+      throw new AuthenticationRequiredError();
+    }
+    throw new Error(`Ask stream failed (${response.status})`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+
+    // SSE frames are separated by a blank line, matching the backend's
+    // `data: {json}\n\n` framing (generate_sse_event in ask_stream.py).
+    let boundary: number;
+    while ((boundary = buffer.indexOf("\n\n")) !== -1) {
+      const rawEvent = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+
+      for (const line of rawEvent.split("\n")) {
+        if (!line.startsWith("data:")) continue;
+        const jsonText = line.slice(5).trim();
+        if (!jsonText) continue;
+        try {
+          onEvent(JSON.parse(jsonText) as AskStreamEvent);
+        } catch {
+          // Malformed frame — skip it, matching the previous
+          // EventSource implementation's silent-skip behavior.
+        }
+      }
+    }
+  }
 }
 
 export async function uploadPaper(file: File): Promise<UploadResult> {
   const formData = new FormData();
   formData.append("file", file);
-  const response = await fetch(`${API_BASE_URL}/upload`, {
+  const response = await authFetch(`${API_BASE_URL}/upload`, {
     method: "POST",
     body: formData,
   });
   const data = await response.json();
   if (!response.ok) {
+    throw new Error(data.message || data.detail || "Upload failed");
+  }
+  // Defense in depth: a "duplicate" response body must never be treated
+  // as success if the underlying paper's status is actually "failed" —
+  // the backend no longer returns this combination, but this call site
+  // should never silently proceed to auto-indexing on it either way.
+  if (data.status === "failed") {
     throw new Error(data.message || "Upload failed");
   }
   return data;
 }
 
 export async function indexDocuments(): Promise<IndexResult> {
-  const response = await fetch(`${API_BASE_URL}/index-document`);
+  const response = await authFetch(`${API_BASE_URL}/index-document`, {
+    method: "POST",
+  });
   const data = await response.json();
   if (data.status !== "success") {
     throw new Error(data.message || "Indexing failed");
@@ -141,7 +314,7 @@ export async function indexDocuments(): Promise<IndexResult> {
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
-  const response = await fetch(`${API_BASE_URL}/stats`);
+  const response = await authFetch(`${API_BASE_URL}/stats`);
   const data = await response.json();
   if (data.status !== "success") {
     throw new Error(data.message || "Stats fetch failed");
@@ -153,11 +326,9 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 // Research APIs
 // ============================================================
 
-export async function summarizePaper(
-  paperName: string
-): Promise<SummarizeResult> {
-  const response = await fetch(
-    `${API_BASE_URL}/summarize-paper?paper_name=${encodeURIComponent(paperName)}`
+export async function summarizePaper(paperName: string): Promise<SummarizeResult> {
+  const response = await authFetch(
+    `${API_BASE_URL}/summarize-paper?paper_name=${encodeURIComponent(paperName)}`,
   );
   const data = await response.json();
   if (data.status !== "success") {
@@ -166,12 +337,9 @@ export async function summarizePaper(
   return data;
 }
 
-export async function comparePapers(
-  paper1: string,
-  paper2: string
-): Promise<CompareResult> {
-  const response = await fetch(
-    `${API_BASE_URL}/compare-papers?paper1=${encodeURIComponent(paper1)}&paper2=${encodeURIComponent(paper2)}`
+export async function comparePapers(paper1: string, paper2: string): Promise<CompareResult> {
+  const response = await authFetch(
+    `${API_BASE_URL}/compare-papers?paper1=${encodeURIComponent(paper1)}&paper2=${encodeURIComponent(paper2)}`,
   );
   const data = await response.json();
   if (data.status !== "success") {
@@ -180,12 +348,8 @@ export async function comparePapers(
   return data;
 }
 
-export async function generateReport(
-  query: string
-): Promise<ResearchResult> {
-  const response = await fetch(
-    `${API_BASE_URL}/research?query=${encodeURIComponent(query)}`
-  );
+export async function generateReport(query: string): Promise<ResearchResult> {
+  const response = await authFetch(`${API_BASE_URL}/research?query=${encodeURIComponent(query)}`);
   const data = await response.json();
   if (data.status !== "success") {
     throw new Error(data.message || "Report generation failed");
@@ -193,11 +357,9 @@ export async function generateReport(
   return data;
 }
 
-export async function getPaperDetails(
-  paperName: string
-): Promise<PaperDetails> {
-  const response = await fetch(
-    `${API_BASE_URL}/paper-details?paper_name=${encodeURIComponent(paperName)}`
+export async function getPaperDetails(paperName: string): Promise<PaperDetails> {
+  const response = await authFetch(
+    `${API_BASE_URL}/paper-details?paper_name=${encodeURIComponent(paperName)}`,
   );
   const data = await response.json();
   if (data.status !== "success") {
@@ -207,7 +369,7 @@ export async function getPaperDetails(
 }
 
 export async function getPapers(): Promise<string[]> {
-  const response = await fetch(`${API_BASE_URL}/papers`);
+  const response = await authFetch(`${API_BASE_URL}/papers`);
   const data = await response.json();
   if (data.status !== "success") {
     throw new Error(data.message || "Failed to fetch papers");
@@ -216,7 +378,7 @@ export async function getPapers(): Promise<string[]> {
 }
 
 export async function exportReport(): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/export-report`);
+  const response = await authFetch(`${API_BASE_URL}/export-report`);
   if (!response.ok) {
     throw new Error("Export failed");
   }
@@ -232,10 +394,9 @@ export async function exportReport(): Promise<void> {
 }
 
 export async function deletePaper(paperName: string): Promise<void> {
-  const response = await fetch(
-    `${API_BASE_URL}/paper/${encodeURIComponent(paperName)}`,
-    { method: "DELETE" }
-  );
+  const response = await authFetch(`${API_BASE_URL}/paper/${encodeURIComponent(paperName)}`, {
+    method: "DELETE",
+  });
   const data = await response.json();
   if (!response.ok) {
     throw new Error(data.detail || "Delete failed");

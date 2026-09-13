@@ -1,16 +1,16 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from qdrant_client.models import FieldCondition, Filter, MatchValue
 
-from app.rag.embedder import model
-from app.rag.vector_store import client
+from app.core.auth import get_current_owner_id
+from app.rag.embedder import encode_query
+from app.rag.vector_store import COLLECTION_NAME, client
 from app.rag.reranker import rerank_results
 
 from app.agents.qa_agent import generate_answer
 
-import app.memory as memory
+from app.memory import get_user_memory
 
 router = APIRouter()
-
-COLLECTION_NAME = "researchmind"
 
 MAX_CHUNKS_PER_PAPER = 25
 MAX_CONTEXT_LENGTH = 15000
@@ -19,26 +19,36 @@ MAX_CONTEXT_LENGTH = 15000
 @router.get("/compare-papers")
 def compare_papers(
     paper1: str,
-    paper2: str
+    paper2: str,
+    owner_id: str = Depends(get_current_owner_id),
 ):
 
     try:
 
+        user_memory = get_user_memory(owner_id)
+
         # ==================================
-        # Helper
+        # Helper — owner_id filter is server-constructed from the verified
+        # JWT identity (threaded in from the outer scope), never from any
+        # client-supplied value.
         # ==================================
 
         def get_paper_context(
             paper_name: str
         ):
 
-            query_vector = model.encode(
+            query_vector = encode_query(
                 paper_name
+            )
+
+            owner_filter = Filter(
+                must=[FieldCondition(key="owner_id", match=MatchValue(value=owner_id))]
             )
 
             results = client.query_points(
                 collection_name=COLLECTION_NAME,
-                query=query_vector.tolist(),
+                query=query_vector,
+                query_filter=owner_filter,
                 limit=100
             ).points
 
@@ -287,16 +297,16 @@ PAPER 2 CONTEXT
         )
 
         # ==================================
-        # Memory
+        # Memory — scoped to this user only
         # ==================================
 
-        memory.last_comparison = comparison
+        user_memory.last_comparison = comparison
 
-        memory.last_compared_paper1 = (
+        user_memory.last_compared_paper1 = (
             detected_paper1
         )
 
-        memory.last_compared_paper2 = (
+        user_memory.last_compared_paper2 = (
             detected_paper2
         )
 

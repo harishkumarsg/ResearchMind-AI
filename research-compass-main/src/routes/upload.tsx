@@ -2,15 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
-import {
-  AlertCircle,
-  CheckCircle2,
-  FileText,
-  Loader2,
-  Upload,
-  X,
-} from "lucide-react";
-import { uploadPaper, indexDocuments } from "@/lib/api";
+import { AlertCircle, CheckCircle2, FileText, Loader2, Upload, X } from "lucide-react";
+import { uploadPaper, indexDocuments, describeIndexResult } from "@/lib/api";
 
 export const Route = createFileRoute("/upload")({
   head: () => ({ meta: [{ title: "Upload · ResearchMind" }] }),
@@ -38,8 +31,7 @@ function UploadPage() {
   const addFiles = (incoming: FileList | null) => {
     if (!incoming) return;
     const pdfs = Array.from(incoming).filter(
-      (f) =>
-        f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")
+      (f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"),
     );
     if (pdfs.length === 0) return;
     setFiles((prev) => [
@@ -70,26 +62,15 @@ function UploadPage() {
     for (let i = 0; i < files.length; i++) {
       if (files[i].status !== "pending") continue;
 
-      setFiles((prev) =>
-        prev.map((f, idx) =>
-          idx === i ? { ...f, status: "uploading" } : f
-        )
-      );
+      setFiles((prev) => prev.map((f, idx) => (idx === i ? { ...f, status: "uploading" } : f)));
 
       try {
         await uploadPaper(files[i].file);
+        setFiles((prev) => prev.map((f, idx) => (idx === i ? { ...f, status: "done" } : f)));
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Upload failed";
         setFiles((prev) =>
-          prev.map((f, idx) =>
-            idx === i ? { ...f, status: "done" } : f
-          )
-        );
-      } catch (err: any) {
-        setFiles((prev) =>
-          prev.map((f, idx) =>
-            idx === i
-              ? { ...f, status: "error", error: err.message }
-              : f
-          )
+          prev.map((f, idx) => (idx === i ? { ...f, status: "error", error: message } : f)),
         );
         allSuccess = false;
       }
@@ -97,9 +78,7 @@ function UploadPage() {
 
     if (!allSuccess) {
       setStage("error");
-      setErrorMessage(
-        "Some files failed to upload. Fix the errors above and try again."
-      );
+      setErrorMessage("Some files failed to upload. Fix the errors above and try again.");
       return;
     }
 
@@ -107,13 +86,17 @@ function UploadPage() {
     setStage("indexing");
     try {
       const result = await indexDocuments();
-      setIndexMessage(
-        `Indexed ${result.pdfs_indexed} PDF${result.pdfs_indexed !== 1 ? "s" : ""} · ${result.chunks_indexed} chunks stored in Qdrant`
-      );
-      setStage("complete");
-    } catch (err: any) {
+      const outcome = describeIndexResult(result);
+      if (outcome.kind === "failed") {
+        setStage("error");
+        setErrorMessage(outcome.message);
+      } else {
+        setIndexMessage(outcome.message);
+        setStage("complete");
+      }
+    } catch (err) {
       setStage("error");
-      setErrorMessage(err.message || "Indexing failed.");
+      setErrorMessage(err instanceof Error ? err.message : "Indexing failed.");
     }
   };
 
@@ -128,10 +111,7 @@ function UploadPage() {
   const isProcessing = stage === "uploading" || stage === "indexing";
 
   return (
-    <AppShell
-      title="Upload Papers"
-      subtitle="Add research papers to your library"
-    >
+    <AppShell title="Upload Papers" subtitle="Add research papers to your library">
       <div className="mx-auto max-w-2xl space-y-6">
         {/* Drop Zone */}
         <div
@@ -150,12 +130,8 @@ function UploadPage() {
         >
           <Upload className="h-8 w-8 text-muted-foreground" />
           <div>
-            <p className="text-sm font-medium">
-              Drop PDFs here or click to browse
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Supports multiple PDF files
-            </p>
+            <p className="text-sm font-medium">Drop PDFs here or click to browse</p>
+            <p className="mt-1 text-xs text-muted-foreground">Supports multiple PDF files</p>
           </div>
           <input
             ref={inputRef}
@@ -176,9 +152,7 @@ function UploadPage() {
                 className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3"
               >
                 <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <span className="flex-1 truncate text-sm">
-                  {entry.file.name}
-                </span>
+                <span className="flex-1 truncate text-sm">{entry.file.name}</span>
                 <span className="text-xs text-muted-foreground">
                   {(entry.file.size / 1024 / 1024).toFixed(1)} MB
                 </span>
@@ -196,9 +170,7 @@ function UploadPage() {
                 {entry.status === "uploading" && (
                   <Loader2 className="h-4 w-4 animate-spin text-primary" />
                 )}
-                {entry.status === "done" && (
-                  <CheckCircle2 className="h-4 w-4 text-green-500" />
-                )}
+                {entry.status === "done" && <CheckCircle2 className="h-4 w-4 text-green-500" />}
                 {entry.status === "error" && (
                   <span title={entry.error}>
                     <AlertCircle className="h-4 w-4 text-destructive" />
@@ -234,13 +206,8 @@ function UploadPage() {
         {/* Actions */}
         <div className="flex gap-3">
           {stage !== "complete" ? (
-            <Button
-              onClick={handleUploadAndIndex}
-              disabled={pendingCount === 0 || isProcessing}
-            >
-              {isProcessing && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
+            <Button onClick={handleUploadAndIndex} disabled={pendingCount === 0 || isProcessing}>
+              {isProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {stage === "uploading"
                 ? "Uploading…"
                 : stage === "indexing"

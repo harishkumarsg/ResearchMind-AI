@@ -11,6 +11,7 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { AuthProvider } from "../lib/auth-context";
 
 function NotFoundComponent() {
   return (
@@ -78,10 +79,17 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "ResearchMind AI — AI for academic research" },
-      { name: "description", content: "Upload papers, build a private knowledge base, ask grounded questions, and generate publication-ready literature reviews." },
+      {
+        name: "description",
+        content:
+          "Upload papers, build a private knowledge base, ask grounded questions, and generate publication-ready literature reviews.",
+      },
       { name: "author", content: "ResearchMind" },
       { property: "og:title", content: "ResearchMind AI" },
-      { property: "og:description", content: "AI-native research workspace for serious academics and labs." },
+      {
+        property: "og:description",
+        content: "AI-native research workspace for serious academics and labs.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@researchmind" },
@@ -124,8 +132,10 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-      <Outlet />
+      <AuthProvider>
+        {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+        <Outlet />
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

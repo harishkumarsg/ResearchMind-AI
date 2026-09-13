@@ -7,7 +7,7 @@ load_dotenv()
 
 _groq_client = Groq(api_key=os.environ["GROQ_API_KEY"])
 
-GROQ_MODEL = "llama-3.1-8b-instant"
+GROQ_MODEL = "openai/gpt-oss-120b"
 
 SYSTEM_PROMPT = """
 You are ResearchMind AI.

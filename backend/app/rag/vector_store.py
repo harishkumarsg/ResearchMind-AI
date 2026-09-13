@@ -10,7 +10,7 @@ from qdrant_client.models import (
 from dotenv import load_dotenv
 load_dotenv()
 
-COLLECTION_NAME = "researchmind"
+COLLECTION_NAME = "researchmind_v2"
 
 _qdrant_url = os.environ.get("QDRANT_URL", "")
 _qdrant_api_key = os.environ.get("QDRANT_API_KEY", "")
@@ -49,7 +49,7 @@ def create_collection():
         client.create_collection(
             collection_name=COLLECTION_NAME,
             vectors_config=VectorParams(
-                size=384,
+                size=1024,
                 distance=Distance.COSINE
             )
         )
@@ -71,6 +71,12 @@ def create_collection():
             client.create_payload_index(
                 collection_name=COLLECTION_NAME,
                 field_name="paper_id",
+                field_schema=PayloadSchemaType.KEYWORD
+            )
+
+            client.create_payload_index(
+                collection_name=COLLECTION_NAME,
+                field_name="owner_id",
                 field_schema=PayloadSchemaType.KEYWORD
             )
 

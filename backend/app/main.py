@@ -8,7 +8,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.upload import router as upload_router
 from app.api.index_document import router as index_router
 from app.api.search import router as search_router
-from app.api.ask import router as ask_router
 from app.api.ask_stream import router as ask_stream_router
 
 # ====================================
@@ -110,11 +109,6 @@ app.include_router(
 app.include_router(
     search_router,
     tags=["Search"]
-)
-
-app.include_router(
-    ask_router,
-    tags=["Ask AI"]
 )
 
 app.include_router(

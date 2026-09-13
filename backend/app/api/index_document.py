@@ -1,716 +1,186 @@
-from fastapi import APIRouter
 import os
+import tempfile
 import uuid
 
-from qdrant_client.models import PointStruct, Filter, FieldCondition, MatchValue
+from fastapi import APIRouter, Depends
+from qdrant_client.models import FieldCondition, Filter, MatchValue, PointStruct
+from sqlalchemy.orm import Session
 
-from app.services.pdf_loader import (
-    extract_pdf_pages
-)
-
-from app.services.text_cleaner import clean_text
-
-from app.services.metadata_extractor import (
-    extract_authors,
-    extract_abstract,
-    extract_keywords
-)
-
+from app.core.auth import get_current_owner_id
+from app.db.models import Paper
+from app.db.session import get_db_session
 from app.rag.chunker import create_chunks
 from app.rag.embedder import create_embeddings
-
-from app.rag.vector_store import (
-    create_collection,
-    client
+from app.rag.vector_store import COLLECTION_NAME, client, create_collection
+from app.services.metadata_extractor import (
+    extract_abstract,
+    extract_authors,
+    extract_keywords,
 )
+from app.services.pdf_loader import extract_pdf_pages
+from app.services.storage import fetch_pdf
+from app.services.text_cleaner import clean_text
 
 router = APIRouter()
 
-COLLECTION_NAME = "researchmind"
 
-EMBEDDING_BATCH_SIZE = 50
-
-UPLOAD_DIR = "uploads/papers"
-
-
-def get_already_indexed_files() -> set:
-    """Return the set of filenames already stored in Qdrant."""
-    try:
-        # Scroll through all points collecting unique source values
-        indexed = set()
-        next_offset = None
-
-        while True:
-            response = client.scroll(
-                collection_name=COLLECTION_NAME,
-                scroll_filter=None,
-                limit=250,
-                offset=next_offset,
-                with_payload=["source"],
-                with_vectors=False,
-            )
-            points, next_offset = response
-
-            for point in points:
-                source = point.payload.get("source", "")
-                if source:
-                    indexed.add(source)
-
-            if next_offset is None:
-                break
-
-        return indexed
-
-    except Exception:
-        # Collection probably doesn't exist yet
-        return set()
+def _clear_existing_points_for_paper(paper_id: str, owner_id: str) -> None:
+    """Makes re-indexing a single paper idempotent (safe to retry after a
+    failure) and scoped to exactly that paper's own points — this is
+    NOT the same operation as the old delete_collection() bug: it only
+    ever removes points matching this exact paper_id AND owner_id."""
+    client.delete(
+        collection_name=COLLECTION_NAME,
+        points_selector=Filter(
+            must=[
+                FieldCondition(key="paper_id", match=MatchValue(value=paper_id)),
+                FieldCondition(key="owner_id", match=MatchValue(value=owner_id)),
+            ]
+        ),
+    )
 
 
-@router.get("/index-document")
-def index_document():
+def _build_chunks_for_paper(paper: Paper, pages: list) -> list:
+    full_text = clean_text("\n".join(p.get("text", "") for p in pages))
+    if len(full_text) < 1000:
+        raise ValueError("Extracted text is too short to index")
 
-    try:
+    authors = extract_authors(full_text)
+    abstract = extract_abstract(full_text)
+    keywords = extract_keywords(full_text)
 
-        # ----------------------------------
-        # Ensure Collection Exists
-        # ----------------------------------
+    owner_id = str(paper.owner_id)
+    paper_id = str(paper.id)
 
-        create_collection()
+    all_chunks = []
+    for page_data in pages:
+        page_number = page_data.get("page", 0)
+        page_text = clean_text(page_data.get("text", ""))
+        if len(page_text.strip()) < 100:
+            continue
 
-        # ----------------------------------
-        # Validate Upload Directory
-        # ----------------------------------
-
-        if not os.path.exists(UPLOAD_DIR):
-            return {
-                "status": "error",
-                "message": "uploads/papers folder not found"
-            }
-
-        # ----------------------------------
-        # Load PDFs
-        # ----------------------------------
-
-        files = [
-            f for f in os.listdir(UPLOAD_DIR)
-            if f.lower().endswith(".pdf")
-        ]
-
-        if not files:
-            return {
-                "status": "error",
-                "message": "No PDFs found in uploads/papers"
-            }
-
-        # ----------------------------------
-        # Incremental: skip already indexed
-        # ----------------------------------
-
-        already_indexed = get_already_indexed_files()
-
-        new_files = [f for f in files if f not in already_indexed]
-
-        print(f"\nTotal PDFs: {len(files)}")
-        print(f"Already indexed: {len(already_indexed)}")
-        print(f"New files to index: {len(new_files)}")
-
-        if not new_files:
-            return {
-                "status": "success",
-                "message": "All PDFs are already indexed. Nothing to do.",
-                "pdfs_found": len(files),
-                "pdfs_indexed": 0,
-                "pdfs_skipped": 0,
-                "already_indexed": len(already_indexed),
-                "total_pages": 0,
-                "chunks_indexed": 0,
-                "points_uploaded": 0,
-            }
-
-        all_chunks = []
-        indexed_papers = 0
-        skipped_papers = 0
-        total_pages = 0
-
-        # ----------------------------------
-        # Process Only New PDFs
-        # ----------------------------------
-
-        for pdf_file in new_files:
-
-            pdf_path = os.path.join(UPLOAD_DIR, pdf_file)
-
-            print(f"\nProcessing: {pdf_file}")
-
-            pages = extract_pdf_pages(pdf_path)
-
-            if not pages:
-                print(f"Skipped unreadable PDF: {pdf_file}")
-                skipped_papers += 1
-                continue
-
-            full_text = "\n".join(
-                page.get("text", "") for page in pages
+        chunks = create_chunks(page_text)
+        for chunk_index, chunk in enumerate(chunks):
+            all_chunks.append(
+                {
+                    "text": chunk,
+                    "source": paper.title,
+                    "paper": paper.title,
+                    "paper_id": paper_id,
+                    "owner_id": owner_id,
+                    "authors": authors,
+                    "abstract": abstract,
+                    "keywords": keywords,
+                    "page": page_number,
+                    "total_pages": len(pages),
+                    "chunk_id": chunk_index,
+                    "chunk_count": len(chunks),
+                }
             )
 
-            full_text = clean_text(full_text)
+    if not all_chunks:
+        raise ValueError("No valid text extracted from this PDF")
 
-            if len(full_text) < 1000:
-                print(f"Skipped tiny PDF: {pdf_file}")
-                skipped_papers += 1
-                continue
-
-            # ----------------------------------
-            # Metadata
-            # ----------------------------------
-
-            paper_title = os.path.splitext(pdf_file)[0]
-            paper_id = str(uuid.uuid4())
-            authors = extract_authors(full_text)
-            abstract = extract_abstract(full_text)
-            keywords = extract_keywords(full_text)
-
-            indexed_papers += 1
-            total_pages += len(pages)
-            total_chunks_for_pdf = 0
-
-            print(f"Pages: {len(pages)}")
-
-            # ----------------------------------
-            # Process Pages
-            # ----------------------------------
-
-            for page_data in pages:
-
-                page_number = page_data.get("page", 0)
-                page_text = clean_text(page_data.get("text", ""))
-
-                if len(page_text.strip()) < 100:
-                    continue
-
-                chunks = create_chunks(page_text)
-                total_chunks_for_pdf += len(chunks)
-
-                for chunk_index, chunk in enumerate(chunks):
-                    all_chunks.append({
-                        "text": chunk,
-                        "source": pdf_file,
-                        "paper": paper_title,
-                        "paper_id": paper_id,
-                        "authors": authors,
-                        "abstract": abstract,
-                        "keywords": keywords,
-                        "page": page_number,
-                        "total_pages": len(pages),
-                        "chunk_id": chunk_index,
-                        "chunk_count": len(chunks),
-                    })
-
-            print(f"Chunks: {total_chunks_for_pdf}")
-
-        # ----------------------------------
-        # No New Chunks
-        # ----------------------------------
-
-        if not all_chunks:
-            return {
-                "status": "error",
-                "message": "No valid text extracted from new PDFs"
-            }
-
-        # ----------------------------------
-        # Create Embeddings + Upsert
-        # ----------------------------------
-
-        total_points = 0
-
-        for i in range(0, len(all_chunks), EMBEDDING_BATCH_SIZE):
-
-            batch = all_chunks[i:i + EMBEDDING_BATCH_SIZE]
-            texts = [item["text"] for item in batch]
-            embeddings = create_embeddings(texts)
-
-            points = []
-
-            for item, embedding in zip(batch, embeddings):
-                points.append(
-                    PointStruct(
-                        id=str(uuid.uuid4()),
-                        vector=embedding.tolist(),
-                        payload={
-                            "text": item["text"],
-                            "source": item["source"],
-                            "paper": item["paper"],
-                            "paper_id": item["paper_id"],
-                            "authors": item["authors"],
-                            "abstract": item["abstract"],
-                            "keywords": item["keywords"],
-                            "page": item["page"],
-                            "total_pages": item["total_pages"],
-                            "chunk_id": item["chunk_id"],
-                            "chunk_count": item["chunk_count"],
-                        }
-                    )
-                )
-
-            client.upsert(
-                collection_name=COLLECTION_NAME,
-                points=points
-            )
-
-            total_points += len(points)
-
-        # ----------------------------------
-        # Response
-        # ----------------------------------
-
-        return {
-            "status": "success",
-            "pdfs_found": len(files),
-            "pdfs_indexed": indexed_papers,
-            "pdfs_skipped": skipped_papers,
-            "already_indexed": len(already_indexed),
-            "total_pages": total_pages,
-            "chunks_indexed": len(all_chunks),
-            "points_uploaded": total_points,
-            "page_level_citations": True,
-            "paper_ids_enabled": True,
-        }
-
-    except Exception as e:
-
-        print(f"Indexing Error: {str(e)}")
-
-        return {
-            "status": "error",
-            "message": str(e)
-        }
+    return all_chunks
 
 
-from app.services.text_cleaner import clean_text
+def index_one_paper(paper: Paper) -> int:
+    """Fetches this paper's PDF from persistent Storage (never from
+    Render's local disk), extracts/chunks/embeds it, and upserts — as a
+    single all-or-nothing operation per paper. Returns points written.
 
-from app.services.metadata_extractor import (
-    extract_authors,
-    extract_abstract,
-    extract_keywords
-)
+    Raises on any failure; the caller is responsible for setting
+    paper.status accordingly. Never leaves partial chunks in Qdrant: the
+    embedding buffer is fully built in memory before Qdrant is touched
+    at all, and any existing points for this paper are cleared
+    immediately before the fresh upsert, not left mixed with old data.
+    """
+    owner_id = str(paper.owner_id)
+    paper_id = str(paper.id)
 
-from app.rag.chunker import create_chunks
-from app.rag.embedder import create_embeddings
+    pdf_bytes = fetch_pdf(owner_id=owner_id, paper_id=paper_id)
 
-from app.rag.vector_store import (
-    create_collection,
-    client
-)
-
-router = APIRouter()
-
-COLLECTION_NAME = "researchmind"
-
-EMBEDDING_BATCH_SIZE = 50
-
-UPLOAD_DIR = "uploads/papers"
-
-
-@router.get("/index-document")
-def index_document():
-
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".pdf")
     try:
+        with os.fdopen(tmp_fd, "wb") as tmp:
+            tmp.write(pdf_bytes)
+        pages = extract_pdf_pages(tmp_path)
+    finally:
+        os.remove(tmp_path)
 
-        # ----------------------------------
-        # Reset Collection
-        # ----------------------------------
+    if not pages:
+        raise ValueError("Unable to extract any pages from this PDF")
+
+    all_chunks = _build_chunks_for_paper(paper, pages)
+
+    # All-or-nothing: the WHOLE paper's embeddings are computed before
+    # Qdrant is touched at all, so a Voyage/embedding failure — even one
+    # that exhausts create_embeddings()'s own internal rate-limit
+    # retries partway through — never leaves a partially-indexed paper.
+    # create_embeddings() (embedder.py) handles its own token-budget
+    # batching, request pacing, and rate-limit retry/backoff internally;
+    # this call site does not need its own batching loop.
+    texts = [item["text"] for item in all_chunks]
+    embeddings = create_embeddings(texts)
+    points = [
+        PointStruct(
+            id=str(uuid.uuid4()),
+            # Voyage's embed() already returns plain Python lists (unlike
+            # the previous SentenceTransformer numpy arrays), so no
+            # .tolist() conversion is needed or valid here.
+            vector=embedding,
+            payload=item,
+        )
+        for item, embedding in zip(all_chunks, embeddings)
+    ]
+
+    create_collection()
+    _clear_existing_points_for_paper(paper_id, owner_id)
+    client.upsert(collection_name=COLLECTION_NAME, points=points)
+
+    return len(points)
+
+
+@router.post("/index-document")
+def index_document(
+    owner_id: str = Depends(get_current_owner_id),
+    db: Session = Depends(get_db_session),
+):
+    """Indexes only the CALLING user's own uploaded-but-not-yet-indexed
+    papers. There is no global "index everything" behavior anymore —
+    that would have crossed ownership boundaries by construction."""
+
+    owner_uuid = uuid.UUID(owner_id)  # SQLAlchemy's Uuid columns require an actual UUID object
+    pending = (
+        db.query(Paper)
+        .filter(Paper.owner_id == owner_uuid, Paper.status == "uploaded")
+        .all()
+    )
+
+    indexed_ids = []
+    failed = []
+
+    for paper in pending:
+        paper.status = "indexing"
+        db.commit()
 
         try:
-
-            client.delete_collection(
-                collection_name=COLLECTION_NAME
-            )
-
-            print(
-                f"Deleted collection: {COLLECTION_NAME}"
-            )
-
-        except Exception:
-            pass
-
-        create_collection()
-
-        # ----------------------------------
-        # Validate Upload Directory
-        # ----------------------------------
-
-        if not os.path.exists(
-            UPLOAD_DIR
-        ):
-
-            return {
-
-                "status":
-                "error",
-
-                "message":
-                "uploads/papers folder not found"
-            }
-
-        # ----------------------------------
-        # Load PDFs
-        # ----------------------------------
-
-        files = [
-
-            file
-
-            for file in os.listdir(
-                UPLOAD_DIR
-            )
-
-            if file.lower().endswith(".pdf")
-        ]
-
-        if not files:
-
-            return {
-
-                "status":
-                "error",
-
-                "message":
-                "No PDFs found"
-            }
-
-        all_chunks = []
-
-        indexed_papers = 0
-
-        skipped_papers = 0
-
-        total_pages = 0
-
-        # ----------------------------------
-        # Process PDFs
-        # ----------------------------------
-
-        for pdf_file in files:
-
-            pdf_path = os.path.join(
-                UPLOAD_DIR,
-                pdf_file
-            )
-
-            print(
-                f"\nProcessing: {pdf_file}"
-            )
-
-            pages = extract_pdf_pages(
-                pdf_path
-            )
-
-            if not pages:
-
-                print(
-                    f"Skipped unreadable PDF: {pdf_file}"
-                )
-
-                skipped_papers += 1
-
-                continue
-
-            full_text = "\n".join(
-
-                page.get(
-                    "text",
-                    ""
-                )
-
-                for page in pages
-            )
-
-            full_text = clean_text(
-                full_text
-            )
-
-            if len(full_text) < 1000:
-
-                print(
-                    f"Skipped tiny PDF: {pdf_file}"
-                )
-
-                skipped_papers += 1
-
-                continue
-
-            # ----------------------------------
-            # Metadata
-            # ----------------------------------
-
-            paper_title = os.path.splitext(
-                pdf_file
-            )[0]
-
-            paper_id = str(
-                uuid.uuid4()
-            )
-
-            authors = extract_authors(
-                full_text
-            )
-
-            abstract = extract_abstract(
-                full_text
-            )
-
-            keywords = extract_keywords(
-                full_text
-            )
-
-            indexed_papers += 1
-
-            total_pages += len(
-                pages
-            )
-
-            total_chunks_for_pdf = 0
-
-            print(
-                f"Pages: {len(pages)}"
-            )
-
-            # ----------------------------------
-            # Process Pages
-            # ----------------------------------
-
-            for page_data in pages:
-
-                page_number = page_data.get(
-                    "page",
-                    0
-                )
-
-                page_text = clean_text(
-
-                    page_data.get(
-                        "text",
-                        ""
-                    )
-                )
-
-                if len(
-                    page_text.strip()
-                ) < 100:
-
-                    continue
-
-                chunks = create_chunks(
-                    page_text
-                )
-
-                total_chunks_for_pdf += len(
-                    chunks
-                )
-
-                for chunk_index, chunk in enumerate(
-                    chunks
-                ):
-
-                    all_chunks.append(
-
-                        {
-
-                            "text":
-                            chunk,
-
-                            "source":
-                            pdf_file,
-
-                            "paper":
-                            paper_title,
-
-                            "paper_id":
-                            paper_id,
-
-                            "authors":
-                            authors,
-
-                            "abstract":
-                            abstract,
-
-                            "keywords":
-                            keywords,
-
-                            "page":
-                            page_number,
-
-                            "total_pages":
-                            len(pages),
-
-                            "chunk_id":
-                            chunk_index,
-
-                            "chunk_count":
-                            len(chunks)
-                        }
-                    )
-
-            print(
-                f"Chunks: {total_chunks_for_pdf}"
-            )
-
-        # ----------------------------------
-        # No Chunks
-        # ----------------------------------
-
-        if not all_chunks:
-
-            return {
-
-                "status":
-                "error",
-
-                "message":
-                "No valid text extracted from PDFs"
-            }
-
-        # ----------------------------------
-        # Create Embeddings
-        # ----------------------------------
-
-        total_points = 0
-
-        for i in range(
-
-            0,
-            len(all_chunks),
-            EMBEDDING_BATCH_SIZE
-
-        ):
-
-            batch = all_chunks[
-                i:i + EMBEDDING_BATCH_SIZE
-            ]
-
-            texts = [
-
-                item["text"]
-
-                for item in batch
-            ]
-
-            embeddings = create_embeddings(
-                texts
-            )
-
-            points = []
-
-            for item, embedding in zip(
-                batch,
-                embeddings
-            ):
-
-                points.append(
-
-                    PointStruct(
-
-                        id=str(
-                            uuid.uuid4()
-                        ),
-
-                        vector=embedding.tolist(),
-
-                        payload={
-
-                            "text":
-                            item["text"],
-
-                            "source":
-                            item["source"],
-
-                            "paper":
-                            item["paper"],
-
-                            "paper_id":
-                            item["paper_id"],
-
-                            "authors":
-                            item["authors"],
-
-                            "abstract":
-                            item["abstract"],
-
-                            "keywords":
-                            item["keywords"],
-
-                            "page":
-                            item["page"],
-
-                            "total_pages":
-                            item["total_pages"],
-
-                            "chunk_id":
-                            item["chunk_id"],
-
-                            "chunk_count":
-                            item["chunk_count"]
-                        }
-                    )
-                )
-
-            client.upsert(
-
-                collection_name=COLLECTION_NAME,
-
-                points=points
-            )
-
-            total_points += len(
-                points
-            )
-
-        # ----------------------------------
-        # Response
-        # ----------------------------------
-
-        return {
-
-            "status":
-            "success",
-
-            "pdfs_found":
-            len(files),
-
-            "pdfs_indexed":
-            indexed_papers,
-
-            "pdfs_skipped":
-            skipped_papers,
-
-            "total_pages":
-            total_pages,
-
-            "chunks_indexed":
-            len(all_chunks),
-
-            "points_uploaded":
-            total_points,
-
-            "page_level_citations":
-            True,
-
-            "paper_ids_enabled":
-            True
-        }
-
-    except Exception as e:
-
-        print(
-            f"Indexing Error: {str(e)}"
-        )
-
-        return {
-
-            "status":
-            "error",
-
-            "message":
-            str(e)
-        }
+            points_written = index_one_paper(paper)
+            paper.status = "indexed"
+            paper.status_detail = None
+            db.commit()
+            indexed_ids.append({"paper_id": str(paper.id), "points": points_written})
+        except Exception as e:
+            paper.status = "failed"
+            paper.status_detail = str(e)
+            db.commit()
+            failed.append({"paper_id": str(paper.id), "error": str(e)})
+
+    return {
+        "status": "success",
+        "papers_found": len(pending),
+        "papers_indexed": len(indexed_ids),
+        "papers_failed": len(failed),
+        "indexed": indexed_ids,
+        "failed": failed,
+    }

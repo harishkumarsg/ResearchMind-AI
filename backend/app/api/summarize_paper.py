@@ -1,36 +1,47 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from qdrant_client.models import FieldCondition, Filter, MatchValue
 
-from app.rag.embedder import model
-from app.rag.vector_store import client
+from app.core.auth import get_current_owner_id
+from app.rag.embedder import encode_query
+from app.rag.vector_store import COLLECTION_NAME, client
 from app.rag.reranker import rerank_results
 
 from app.agents.qa_agent import generate_answer
 
-import app.memory as memory
+from app.services.chat_store import coerce_paper_id, set_current_paper
+
+from app.memory import get_user_memory
 
 router = APIRouter()
-
-COLLECTION_NAME = "researchmind"
 
 
 @router.get("/summarize-paper")
 def summarize_paper(
-    paper_name: str
+    paper_name: str,
+    owner_id: str = Depends(get_current_owner_id),
 ):
 
     try:
 
+        user_memory = get_user_memory(owner_id)
+
         # -----------------------------------
-        # Search
+        # Search — owner_id filter is server-constructed from the
+        # verified JWT identity, never from any client-supplied value.
         # -----------------------------------
 
-        query_vector = model.encode(
+        query_vector = encode_query(
             paper_name
+        )
+
+        owner_filter = Filter(
+            must=[FieldCondition(key="owner_id", match=MatchValue(value=owner_id))]
         )
 
         results = client.query_points(
             collection_name=COLLECTION_NAME,
-            query=query_vector.tolist(),
+            query=query_vector,
+            query_filter=owner_filter,
             limit=100
         ).points
 
@@ -69,6 +80,12 @@ def summarize_paper(
 
         detected_paper = ""
 
+        # Captured alongside the title so the paper can be recorded
+        # durably below. payload["paper"] is papers.title and
+        # payload["paper_id"] is str(papers.id) — both written from the
+        # same row at index time, so they always agree.
+        detected_paper_id = ""
+
         for hit in results:
 
             paper = hit.payload.get(
@@ -83,12 +100,22 @@ def summarize_paper(
 
                 detected_paper = paper
 
+                detected_paper_id = hit.payload.get(
+                    "paper_id",
+                    ""
+                )
+
                 break
 
         if not detected_paper:
 
             detected_paper = results[0].payload.get(
                 "paper",
+                ""
+            )
+
+            detected_paper_id = results[0].payload.get(
+                "paper_id",
                 ""
             )
 
@@ -291,17 +318,30 @@ Context:
         )
 
         # -----------------------------------
-        # Memory
+        # Memory — scoped to this user only
         # -----------------------------------
 
-        memory.last_summary = summary
+        user_memory.last_summary = summary
 
-        memory.last_summary_paper = (
+        user_memory.last_summary_paper = (
             detected_paper
         )
 
-        memory.current_paper = (
-            detected_paper
+        # -----------------------------------
+        # Durable current-paper pointer
+        #
+        # Summarising establishes which paper the conversation is about.
+        # /ask-stream's follow-up lock reads that from
+        # chat_sessions.current_paper_id, so it is recorded here rather
+        # than in in-process memory, which was lost on every restart.
+        # owner_id is the verified JWT value; a payload that is missing,
+        # malformed, or points at a paper this owner does not have is
+        # ignored rather than written.
+        # -----------------------------------
+
+        set_current_paper(
+            owner_id,
+            coerce_paper_id(detected_paper_id)
         )
 
         # -----------------------------------

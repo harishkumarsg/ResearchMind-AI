@@ -1,5 +1,10 @@
-from fastapi import APIRouter
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, Response
+
+from sqlalchemy.orm import Session
+
+from app.core.auth import get_current_owner_id
+from app.db.models import Report
+from app.db.session import get_db_session
 
 from reportlab.platypus import (
     SimpleDocTemplate,
@@ -19,121 +24,48 @@ from reportlab.lib.pagesizes import letter
 
 from datetime import datetime
 
-import os
+import io
 import re
-
-import app.memory as memory
+import uuid
 
 router = APIRouter()
 
 
 @router.get("/export-report")
-def export_report():
+def export_report(
+    owner_id: str = Depends(get_current_owner_id),
+    db: Session = Depends(get_db_session)
+):
 
     try:
 
         # ==================================
-        # Load Report
+        # Load Report — the owner's most recent row in Postgres
+        #
+        # The filter uses owner_id from get_current_owner_id, i.e. the
+        # verified JWT `sub`. No client-supplied value reaches this query,
+        # and the route exposes no report identifier at all, so a caller
+        # cannot name — let alone read — another user's report. A report
+        # belonging to someone else simply is not in this result set.
+        #
+        # This replaces the previous in-process memory read plus
+        # latest_report_<owner>.txt / latest_sources_<owner>.txt fallback.
+        # Both were lost on restart and on Render's ephemeral disk; the
+        # row is the durable record written by /research.
         # ==================================
 
-        report = getattr(
-            memory,
-            "last_research_report",
-            ""
+        report_row = (
+            db.query(Report)
+            .filter(Report.owner_id == uuid.UUID(owner_id))
+            .order_by(Report.created_at.desc())
+            .first()
         )
 
-        citations = getattr(
-            memory,
-            "last_citations",
-            []
-        )
+        report = report_row.report_markdown if report_row else ""
 
-        query = getattr(
-            memory,
-            "last_research_query",
-            ""
-        )
+        citations = (report_row.citations or []) if report_row else []
 
-        # ==================================
-        # Fallback Report
-        # ==================================
-
-        if not report:
-
-            if os.path.exists(
-                "latest_report.txt"
-            ):
-
-                with open(
-                    "latest_report.txt",
-                    "r",
-                    encoding="utf-8"
-                ) as f:
-
-                    report = f.read()
-
-        # ==================================
-        # Fallback Citations
-        # ==================================
-
-        if not citations:
-
-            if os.path.exists(
-                "latest_sources.txt"
-            ):
-
-                citations = []
-
-                current = {}
-
-                with open(
-                    "latest_sources.txt",
-                    "r",
-                    encoding="utf-8"
-                ) as f:
-
-                    for line in f:
-
-                        line = line.strip()
-
-                        if line.startswith(
-                            "Paper:"
-                        ):
-
-                            current["paper"] = (
-                                line.replace(
-                                    "Paper:",
-                                    ""
-                                ).strip()
-                            )
-
-                        elif line.startswith(
-                            "Source:"
-                        ):
-
-                            current["source"] = (
-                                line.replace(
-                                    "Source:",
-                                    ""
-                                ).strip()
-                            )
-
-                        elif line.startswith(
-                            "Page:"
-                        ):
-
-                            current["page"] = (
-                                line.replace(
-                                    "Page:",
-                                    ""
-                                ).strip()
-                            )
-
-                            citations.append(
-                                current.copy()
-                            )
-
-                            current = {}
+        query = report_row.query if report_row else ""
 
         # ==================================
         # Validation
@@ -164,10 +96,16 @@ def export_report():
         # PDF Setup
         # ==================================
 
-        pdf_path = "ResearchMind_Report.pdf"
+        # Built entirely in memory. Previously this wrote
+        # ResearchMind_Report_<owner>.pdf next to the process and served
+        # it from there, which left one file per user accumulating on
+        # disk — a disk that is ephemeral on Render anyway, so the file
+        # was never a durable artifact, only litter. reportlab accepts
+        # any binary file-like object, so a BytesIO needs no other change.
+        buffer = io.BytesIO()
 
         doc = SimpleDocTemplate(
-            pdf_path,
+            buffer,
             pagesize=letter,
             leftMargin=40,
             rightMargin=40,
@@ -443,16 +381,17 @@ def export_report():
 
         doc.build(content)
 
-        memory.last_exported_file = pdf_path
-
         # ==================================
-        # Return PDF
+        # Return PDF — bytes straight from the buffer, nothing on disk
         # ==================================
 
-        return FileResponse(
-            pdf_path,
+        return Response(
+            content=buffer.getvalue(),
             media_type="application/pdf",
-            filename="ResearchMind_Report.pdf"
+            headers={
+                "Content-Disposition":
+                'attachment; filename="ResearchMind_Report.pdf"'
+            }
         )
 
     except Exception as e:

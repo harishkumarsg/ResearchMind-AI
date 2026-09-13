@@ -1,8 +1,25 @@
+"""
+Voyage AI reranking (rerank-3). Replaces the local ms-marco-MiniLM-L-6-v2
+cross-encoder.
+
+The public interface — rerank_results(question, results) -> results,
+gated by RERANK_ENABLED, truncated to MAX_RERANK first — is preserved
+exactly as it was, so every existing caller (ask_stream.py, search.py,
+research.py, summarize_paper.py, compare_papers.py) needs no changes
+beyond what Phase 2 already touches them for.
+
+VOYAGE_API_KEY is read from the environment only, lazily, and is never
+logged, printed, or hardcoded.
+"""
 import os
+from typing import Optional
 
-from sentence_transformers import CrossEncoder
+import voyageai
 
-_cross_encoder = None
+VOYAGE_RERANK_MODEL = "rerank-3"
+MAX_RERANK = 5
+
+_client: Optional[voyageai.Client] = None
 
 
 def _rerank_enabled() -> bool:
@@ -10,52 +27,32 @@ def _rerank_enabled() -> bool:
     return os.environ.get("RERANK_ENABLED", "false").lower() == "true"
 
 
-def _get_cross_encoder():
-    global _cross_encoder
-    if _cross_encoder is None:
-        _cross_encoder = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
-    return _cross_encoder
+def _get_client() -> voyageai.Client:
+    global _client
+    if _client is None:
+        api_key = os.environ.get("VOYAGE_API_KEY", "")
+        if not api_key:
+            raise RuntimeError("VOYAGE_API_KEY is not configured")
+        _client = voyageai.Client(api_key=api_key)
+    return _client
 
-MAX_RERANK = 5
 
-
-def rerank_results(
-    question,
-    results
-):
+def rerank_results(question, results):
 
     if not results:
         return []
 
-    # On low-memory environments, skip cross-encoder and keep vector order.
     if not _rerank_enabled():
         return results[:MAX_RERANK]
 
     results = results[:MAX_RERANK]
 
-    pairs = [
-        [
-            question,
-            hit.payload.get(
-                "text",
-                ""
-            )[:400]
-        ]
-        for hit in results
-    ]
+    documents = [hit.payload.get("text", "")[:400] for hit in results]
 
-    scores = _get_cross_encoder().predict(
-        pairs,
-        show_progress_bar=False
+    reranking = _get_client().rerank(
+        query=question,
+        documents=documents,
+        model=VOYAGE_RERANK_MODEL,
     )
 
-    reranked = sorted(
-        zip(results, scores),
-        key=lambda x: x[1],
-        reverse=True
-    )
-
-    return [
-        item[0]
-        for item in reranked
-    ]
+    return [results[r.index] for r in reranking.results]

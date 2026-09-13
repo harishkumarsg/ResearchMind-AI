@@ -1,16 +1,21 @@
-from fastapi import APIRouter
+import uuid
 
-from app.rag.embedder import model
-from app.rag.vector_store import client
+from fastapi import APIRouter, Depends
+from qdrant_client.models import FieldCondition, Filter, MatchValue
+
+from app.core.auth import get_current_owner_id
+from app.rag.embedder import encode_query
+from app.rag.vector_store import COLLECTION_NAME, client
 from app.rag.reranker import rerank_results
 
 from app.agents.research_agent import research_agent
 
-import app.memory as memory
+from app.db.models import Report
+from app.db.session import session_scope
+
+from app.memory import get_user_memory
 
 router = APIRouter()
-
-COLLECTION_NAME = "researchmind"
 
 MAX_RESULTS = 30
 MAX_CONTEXT_CHUNKS = 15
@@ -18,23 +23,31 @@ MAX_CONTEXT_LENGTH = 12000
 
 
 @router.get("/research")
-def research(query: str):
+def research(query: str, owner_id: str = Depends(get_current_owner_id)):
 
     try:
+
+        user_memory = get_user_memory(owner_id)
 
         # ==================================
         # Query Embedding
         # ==================================
 
-        query_vector = model.encode(query)
+        query_vector = encode_query(query)
 
         # ==================================
-        # Vector Search
+        # Vector Search — owner_id filter is server-constructed from the
+        # verified JWT identity, never from any client-supplied value.
         # ==================================
+
+        owner_filter = Filter(
+            must=[FieldCondition(key="owner_id", match=MatchValue(value=owner_id))]
+        )
 
         search_results = client.query_points(
             collection_name=COLLECTION_NAME,
-            query=query_vector.tolist(),
+            query=query_vector,
+            query_filter=owner_filter,
             limit=MAX_RESULTS
         ).points
 
@@ -212,58 +225,54 @@ CONTENT:
         )
 
         # ==================================
-        # Save Memory
+        # Persist Report — the durable record
+        #
+        # owner_id comes from get_current_owner_id, i.e. the verified JWT
+        # `sub`, and is never read from a query parameter or request body.
+        # A caller cannot write a report attributed to anyone else.
+        #
+        # Each /research call INSERTs a new row rather than overwriting a
+        # per-owner one: `reports` has no unique constraint on owner_id,
+        # and a research history is worth more than a single latest slot.
+        # Export (a later step) reads the owner's most recent row.
+        #
+        # session_scope() rather than a request-scoped dependency keeps
+        # the connection lease to just this write, and commits or rolls
+        # back as one unit. A failure here propagates to the handler's
+        # except block below, so the response reports an error instead of
+        # claiming success for a report that was never stored.
         # ==================================
 
-        memory.last_research_query = query
+        with session_scope() as db:
 
-        memory.last_research_report = report
-
-        memory.last_research_sources = citations
-
-        memory.last_citations = citations
-
-        memory.last_research_context = context
-
-        # ==================================
-        # Save Report File
-        # ==================================
-
-        with open(
-            "latest_report.txt",
-            "w",
-            encoding="utf-8"
-        ) as f:
-
-            f.write(report)
-
-        # ==================================
-        # Save Citation File
-        # ==================================
-
-        with open(
-            "latest_sources.txt",
-            "w",
-            encoding="utf-8"
-        ) as f:
-
-            for item in citations:
-
-                f.write(
-                    f"Paper: {item['paper']}\n"
+            db.add(
+                Report(
+                    owner_id=uuid.UUID(owner_id),
+                    query=query,
+                    report_markdown=report,
+                    citations=citations
                 )
+            )
 
-                f.write(
-                    f"Source: {item['source']}\n"
-                )
+        # ==================================
+        # Save Memory — scoped to this user only
+        # ==================================
 
-                f.write(
-                    f"Page: {item['page']}\n\n"
-                )
+        user_memory.last_research_query = query
 
-        print(
-            "latest_sources.txt written."
-        )
+        user_memory.last_research_report = report
+
+        user_memory.last_research_sources = citations
+
+        user_memory.last_citations = citations
+
+        user_memory.last_research_context = context
+
+        # The latest_report_<owner>.txt / latest_sources_<owner>.txt
+        # files that used to be written here are gone. They existed only
+        # as export_report.py's fallback, and export now reads the
+        # Postgres row written above, so these were dead writes to a disk
+        # that is ephemeral in deployment anyway.
 
         print(
             "===================================\n"

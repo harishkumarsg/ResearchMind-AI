@@ -15,6 +15,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getPaperDetails, summarizePaper, deletePaper } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
+import { queryKeys } from "@/lib/query-keys";
 import { useState } from "react";
 import type { ReactNode } from "react";
 
@@ -29,6 +31,8 @@ function PaperDetailsPage() {
   const { paperName } = Route.useParams();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const userId = user?.id;
 
   const [summary, setSummary] = useState("");
   const [summarizing, setSummarizing] = useState(false);
@@ -40,8 +44,9 @@ function PaperDetailsPage() {
     isLoading,
     error,
   } = useQuery({
-    queryKey: ["paper-details", paperName],
+    queryKey: queryKeys.paperDetails(userId, paperName),
     queryFn: () => getPaperDetails(paperName),
+    enabled: !!userId,
   });
 
   const handleSummarize = async () => {
@@ -70,8 +75,11 @@ function PaperDetailsPage() {
     setDeleteError("");
     try {
       await deletePaper(paperName);
-      qc.invalidateQueries({ queryKey: ["papers"] });
-      qc.invalidateQueries({ queryKey: ["stats"] });
+      qc.invalidateQueries({ queryKey: queryKeys.papers(userId) });
+      qc.invalidateQueries({ queryKey: queryKeys.stats(userId) });
+      // Search has its own namespace now, so invalidate it explicitly —
+      // the ["papers"] prefix no longer sweeps it up.
+      qc.invalidateQueries({ queryKey: queryKeys.searchAll() });
       navigate({ to: "/dashboard" });
     } catch (err: unknown) {
       setDeleteError(err instanceof Error ? err.message : "Delete failed.");

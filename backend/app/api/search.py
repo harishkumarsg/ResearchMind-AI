@@ -1,16 +1,16 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from qdrant_client.models import FieldCondition, Filter, MatchValue
 
-from app.rag.embedder import model
-from app.rag.vector_store import client
+from app.core.auth import get_current_owner_id
+from app.rag.embedder import encode_query
+from app.rag.vector_store import COLLECTION_NAME, client
 from app.rag.reranker import rerank_results
 
 router = APIRouter()
 
-COLLECTION_NAME = "researchmind"
-
 
 @router.get("/search")
-def search(query: str):
+def search(query: str, owner_id: str = Depends(get_current_owner_id)):
 
     try:
 
@@ -18,17 +18,23 @@ def search(query: str):
         # Create Query Embedding
         # ----------------------------------
 
-        query_vector = model.encode(
+        query_vector = encode_query(
             query
         )
 
         # ----------------------------------
-        # Vector Search
+        # Vector Search — owner_id filter is server-constructed from the
+        # verified JWT identity, never from any client-supplied value.
         # ----------------------------------
+
+        owner_filter = Filter(
+            must=[FieldCondition(key="owner_id", match=MatchValue(value=owner_id))]
+        )
 
         results = client.query_points(
             collection_name=COLLECTION_NAME,
-            query=query_vector.tolist(),
+            query=query_vector,
+            query_filter=owner_filter,
             limit=50
         ).points
 

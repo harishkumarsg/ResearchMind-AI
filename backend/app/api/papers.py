@@ -1,39 +1,30 @@
-from fastapi import APIRouter
-import os
+import uuid
+
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+
+from app.core.auth import get_current_owner_id
+from app.db.models import Paper
+from app.db.session import get_db_session
 
 router = APIRouter()
 
-UPLOAD_DIR = "uploads/papers"
-
 
 @router.get("/papers")
-def list_papers():
+def list_papers(
+    owner_id: str = Depends(get_current_owner_id),
+    db: Session = Depends(get_db_session),
+):
+    owner_uuid = uuid.UUID(owner_id)  # SQLAlchemy's Uuid columns require an actual UUID object
 
-    try:
+    papers = (
+        db.query(Paper)
+        .filter(Paper.owner_id == owner_uuid, Paper.status == "indexed")
+        .order_by(Paper.title)
+        .all()
+    )
 
-        if not os.path.exists(UPLOAD_DIR):
-
-            return {
-                "status": "success",
-                "papers": []
-            }
-
-        files = [
-            os.path.splitext(f)[0]
-            for f in os.listdir(UPLOAD_DIR)
-            if f.lower().endswith(".pdf")
-        ]
-
-        files.sort()
-
-        return {
-            "status": "success",
-            "papers": files
-        }
-
-    except Exception as e:
-
-        return {
-            "status": "error",
-            "message": str(e)
-        }
+    return {
+        "status": "success",
+        "papers": [p.title for p in papers],
+    }

@@ -11,6 +11,8 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { searchPapers } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
+import { queryKeys } from "@/lib/query-keys";
 
 export const Route = createFileRoute("/search")({
   head: () => ({
@@ -21,15 +23,17 @@ export const Route = createFileRoute("/search")({
 
 function SearchPage() {
   const [query, setQuery] = useState("");
+  const { user } = useAuth();
+  const userId = user?.id;
 
   const {
     data: results = [],
     isLoading,
     error,
   } = useQuery({
-    queryKey: ["papers", query],
+    queryKey: queryKeys.search(userId, query),
     queryFn: () => searchPapers(query),
-    enabled: query.length > 2,
+    enabled: !!userId && query.length > 2,
   });
 
   return (

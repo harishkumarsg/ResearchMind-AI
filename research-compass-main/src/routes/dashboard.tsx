@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { getDashboardStats } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
+import { queryKeys } from "@/lib/query-keys";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({ meta: [{ title: "Workspace · ResearchMind" }] }),
@@ -20,10 +22,14 @@ export const Route = createFileRoute("/dashboard")({
 });
 
 function Dashboard() {
+  const { user } = useAuth();
+  const userId = user?.id;
+
   const { data: stats, isLoading } = useQuery({
-    queryKey: ["stats"],
+    queryKey: queryKeys.stats(userId),
     queryFn: getDashboardStats,
     refetchInterval: 30_000,
+    enabled: !!userId,
   });
 
   return (

@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { comparePapers, getPapers } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
+import { queryKeys } from "@/lib/query-keys";
 import type { CompareResult } from "@/lib/api";
 
 export const Route = createFileRoute("/compare")({
@@ -52,9 +54,13 @@ function ComparePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const { user } = useAuth();
+  const userId = user?.id;
+
   const { data: papers = [] } = useQuery({
-    queryKey: ["papers"],
+    queryKey: queryKeys.papers(userId),
     queryFn: getPapers,
+    enabled: !!userId,
   });
 
   const handleCompare = async () => {
