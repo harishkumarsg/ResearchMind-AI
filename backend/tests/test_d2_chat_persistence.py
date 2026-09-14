@@ -216,11 +216,11 @@ class TestSessionCreationAndReuse(ChatPersistenceTestCase):
 
         calls = {"n": 0}
 
-        def flaky_scope():
+        def flaky_scope(owner_id):
             calls["n"] += 1
             if calls["n"] == 1:
                 raise IntegrityError("duplicate key", None, Exception())
-            return original()
+            return original(owner_id)
 
         with patch(real_scope_target, side_effect=flaky_scope):
             session_id = persist_user_turn(USER_A, "hello")

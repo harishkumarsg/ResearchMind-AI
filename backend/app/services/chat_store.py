@@ -77,7 +77,7 @@ def load_chat_state(
     """
     owner_uuid = uuid.UUID(owner_id)
 
-    with session_scope() as db:
+    with session_scope(owner_id) as db:
         chat_session = (
             db.query(ChatSession)
             .filter(ChatSession.owner_id == owner_uuid)
@@ -159,7 +159,7 @@ def persist_user_turn(owner_id: str, question: str) -> uuid.UUID:
     owner_uuid = uuid.UUID(owner_id)
 
     def attempt() -> uuid.UUID:
-        with session_scope() as db:
+        with session_scope(owner_id) as db:
             chat_session = _get_or_create_session(db, owner_uuid)
             session_id = chat_session.id
             db.add(
@@ -198,7 +198,7 @@ def persist_assistant_turn(
     """
     owner_uuid = uuid.UUID(owner_id)
 
-    with session_scope() as db:
+    with session_scope(owner_id) as db:
         db.add(
             ChatMessage(
                 session_id=session_id,
@@ -254,7 +254,7 @@ def set_current_paper(owner_id: str, paper_id: Optional[uuid.UUID]) -> None:
     owner_uuid = uuid.UUID(owner_id)
 
     def attempt() -> None:
-        with session_scope() as db:
+        with session_scope(owner_id) as db:
             if not _owns_paper(db, owner_uuid, paper_id):
                 return
 

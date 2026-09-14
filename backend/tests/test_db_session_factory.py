@@ -67,7 +67,7 @@ class TestSessionScopeTransactions(SQLiteBackedTestCase):
         with patch.object(
             session_module, "get_session_factory", return_value=self.SessionLocal
         ):
-            with session_scope() as db:
+            with session_scope(str(OWNER)) as db:
                 db.add(_report())
 
         self.assertEqual(
@@ -84,7 +84,7 @@ class TestSessionScopeTransactions(SQLiteBackedTestCase):
             session_module, "get_session_factory", return_value=self.SessionLocal
         ):
             with self.assertRaises(ValueError):
-                with session_scope() as db:
+                with session_scope(str(OWNER)) as db:
                     db.add(_report())
                     raise ValueError("boom")
 
@@ -99,7 +99,7 @@ class TestSessionScopeTransactions(SQLiteBackedTestCase):
             session_module, "get_session_factory", return_value=self.SessionLocal
         ):
             with self.assertRaises(RuntimeError):
-                with session_scope() as db:
+                with session_scope(str(OWNER)) as db:
                     db.add(_report("first"))
                     db.flush()
                     db.add(_report("second"))
@@ -122,7 +122,7 @@ class TestSessionScopeAlwaysCloses(SQLiteBackedTestCase):
     def test_closes_on_success(self):
         factory, session, spy = self._factory_returning_spied_session()
         with patch.object(session_module, "get_session_factory", return_value=factory):
-            with session_scope() as db:
+            with session_scope(str(OWNER)) as db:
                 self.assertIs(db, session)
                 db.add(_report())
 
@@ -136,7 +136,7 @@ class TestSessionScopeAlwaysCloses(SQLiteBackedTestCase):
         factory, session, spy = self._factory_returning_spied_session()
         with patch.object(session_module, "get_session_factory", return_value=factory):
             with self.assertRaises(ValueError):
-                with session_scope():
+                with session_scope(str(OWNER)):
                     raise ValueError("boom")
 
         spy.assert_called_once()
@@ -182,7 +182,7 @@ class TestGetDbSessionUnchanged(SQLiteBackedTestCase):
         with patch.object(
             session_module, "get_session_factory", return_value=(lambda: session)
         ):
-            generator = get_db_session()
+            generator = get_db_session(str(OWNER))
             yielded = next(generator)
             self.assertIs(yielded, session)
             spy.assert_not_called()
@@ -198,7 +198,7 @@ class TestGetDbSessionUnchanged(SQLiteBackedTestCase):
         with patch.object(
             session_module, "get_session_factory", return_value=self.SessionLocal
         ):
-            generator = get_db_session()
+            generator = get_db_session(str(OWNER))
             db = next(generator)
             db.add(_report())
             with self.assertRaises(StopIteration):

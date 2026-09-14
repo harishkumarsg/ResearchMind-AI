@@ -243,7 +243,7 @@ CONTENT:
         # claiming success for a report that was never stored.
         # ==================================
 
-        with session_scope() as db:
+        with session_scope(owner_id) as db:
 
             db.add(
                 Report(

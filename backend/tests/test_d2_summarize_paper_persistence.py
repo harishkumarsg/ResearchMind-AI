@@ -372,11 +372,11 @@ class TestSetCurrentPaperDirectly(SummarizePersistenceTestCase):
         original = chat_store.session_scope
         calls = {"n": 0}
 
-        def flaky_scope():
+        def flaky_scope(owner_id):
             calls["n"] += 1
             if calls["n"] == 1:
                 raise IntegrityError("duplicate key", None, Exception())
-            return original()
+            return original(owner_id)
 
         with patch.object(chat_store, "session_scope", side_effect=flaky_scope):
             set_current_paper(USER_A, uuid.UUID(PAPER_A_ID))
