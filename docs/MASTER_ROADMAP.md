@@ -1,18 +1,24 @@
 # ResearchMind AI — Master Project Roadmap
 
-**Last updated:** 2026-09-13
+**Last updated:** 2026-09-14
 **Status of this document:** current and authoritative.
 
 > **This supersedes `docs/ROADMAP.md` as the project roadmap.**
 > `docs/ROADMAP.md` is unchanged since the initial commit and describes a
 > pre-security feature list that no longer reflects the project. It has been
-> left in place deliberately, not updated. `docs/PROJECT_CONTEXT.md` is also
-> stale (it still names Sentence Transformers / Cross Encoder / Ollama, all of
-> which were replaced). `docs/ARCHITECTURE.md` is empty.
+> left in place deliberately, not updated. `docs/ARCHITECTURE.md` is empty.
+>
+> **`docs/PROJECT_CONTEXT.md` contradicts the current system and must not be
+> used as guidance.** It names a replaced stack (Sentence Transformers, Cross
+> Encoder, Ollama/Qwen), documents endpoints that no longer exist in that form
+> (`GET /index-document` is now POST-only; `/ask` was deleted), describes local
+> `uploads/papers/` storage with no authentication, and its coding rules include
+> "Do not replace Ollama". Following it would regress the Phase 1 safety fixes
+> and the Phase 1.5 authentication model.
 >
 > Every claim below is tied to a durable artifact — a test file, a migration,
-> a code location, or a recorded verification run. Where something could not be
-> verified, it says so rather than guessing.
+> a code location, a commit, or a recorded verification run. Where something
+> could not be verified, it says so rather than guessing.
 
 ---
 
@@ -36,15 +42,16 @@ client.
 Browser (TanStack Start / React 19)
    │  Supabase Auth — Google OAuth; JWT in Authorization header
    ▼
-FastAPI backend  ← the only authorization boundary
+FastAPI backend  ← the application authorization boundary
    ├── app/core/auth.py      JWT verified via JWKS; owner_id = verified `sub`
    ├── app/api/*             endpoints; every query filtered by owner_id
    ├── app/services/         storage.py (Supabase Storage), chat_store.py
    ├── app/rag/              embedder (Voyage), vector_store (Qdrant), reranker
-   └── app/db/               SQLAlchemy models + session factory
+   └── app/db/               SQLAlchemy models + session factory + JWT claims
    │
    ├── Supabase Postgres     papers, reports, chat_sessions, chat_messages
-   ├── Supabase Storage      bucket "papers", path papers/{owner}/{paper}/original.pdf
+   │                         app role researchmind_app (NOBYPASSRLS), RLS FORCED
+   ├── Supabase Storage      bucket "papers", path {owner}/{paper}/original.pdf
    ├── Qdrant Cloud          collection researchmind_v2
    ├── Voyage AI             embeddings + reranking
    └── Groq                  answer generation
@@ -53,13 +60,22 @@ FastAPI backend  ← the only authorization boundary
 **`owner_id` is derived in exactly one place** — `app/core/auth.py`, from the
 verified JWT `sub`. No endpoint accepts an owner identifier from the client.
 
-### Established production technology
+Tenant isolation is enforced at **two independent layers**: an explicit
+`WHERE owner_id = :owner_id` in every query, and Postgres row-level security
+driven by the same verified identity.
+
+### Established technology — local validated build
+
+This describes the locally validated product. **The deployed code differs
+substantially; see §3.**
 
 | Layer | Choice | Notes |
 |---|---|---|
 | Backend | FastAPI 0.136.3 / Starlette 1.2.1, Python 3.13 | `render.yaml` → `uvicorn app.main:app` |
 | ORM / driver | SQLAlchemy 2.0.50, psycopg 3.3.5 | `DATABASE_URL` uses `postgresql+psycopg://` |
 | Database | Supabase Postgres **17.6** | session-mode pooler, port 5432 |
+| Database role | `researchmind_app` | NOBYPASSRLS, owns no tables; username `researchmind_app.<project_ref>` |
+| Row-level security | enabled **and forced** on all four tables | owner-only policies, `USING (owner_id = auth.uid())` |
 | Auth | Supabase Auth, Google OAuth only | JWKS verification, RS256/ES256 allowlist |
 | Object storage | Supabase Storage, bucket `papers` | RLS policies in migration 0002 |
 | Vectors | Qdrant Cloud, `researchmind_v2` | 1024-dim, COSINE, 8 payload indexes |
@@ -190,119 +206,218 @@ Retrieval constants (`ask_stream.py`): `SEARCH_LIMIT=8`, `TOP_CHUNKS=4`,
     `current_topic` was **not** overwritten — proving follow-up detection read
     from Postgres, since no in-process chat state exists any more.
 
+- **Committed:** local commit `e144ab0` (D0–D2 checkpoint).
+- **Status:** COMPLETE / PASS.
+
+### C1 — RLS Hardening
+
+- **Objective:** make Postgres row-level security a real second enforcement layer
+  beneath the application's `WHERE owner_id` filters.
+
+- **Implemented, in five approved stages:**
+  1. **Read-only audit** — RLS proven inert for three independent reasons: the
+     app connected as `postgres`, which owned all four tables, carried
+     `BYPASSRLS`, and `FORCE` was off.
+  2. **Role** — `researchmind_app`: LOGIN, NOBYPASSRLS, NOINHERIT, NOSUPERUSER,
+     NOCREATEROLE, NOCREATEDB, NOREPLICATION; owns no tables; granted `USAGE` on
+     `public`, `SELECT/INSERT/UPDATE/DELETE` on the four tables, and `EXECUTE` on
+     `auth.uid()`. No `TRUNCATE`, no DDL, no access to `auth.users`. Supavisor
+     accepts it as `researchmind_app.<project_ref>` on the session pooler.
+  3. **Claims plumbing** — a SQLAlchemy `after_begin` session event sets
+     `request.jwt.claims` with `set_config(..., true)` (transaction-local) on
+     **every** transaction start, so identity survives the multiple commits in
+     `/upload`, `/index-document` and `/paper/{name}`.
+     `session_scope(owner_id)` and
+     `get_db_session(owner_id=Depends(get_current_owner_id))` require the
+     verified owner. Local commit `cebd105`.
+  4. **`DATABASE_URL` switched** to `researchmind_app` — local `backend/.env`
+     only; one line changed, all other secrets untouched.
+  5. **`FORCE ROW LEVEL SECURITY`** on `papers`, `reports`, `chat_sessions` and
+     `chat_messages`. Policies were not altered; explicit `WITH CHECK` (5b) was
+     deliberately excluded.
+
+- **Validation evidence:**
+  - Offline suite: **270 tests, OK (skipped=7)**; real-engine tripwire never fired.
+    Includes 16 claims tests and a source guard forbidding session-level `SET`.
+  - **Pooled-connection leakage:** with `pool_size=1`, every scenario shared one
+    backend pid. Owner A, then owner B, then a no-claims session: B saw only B,
+    the no-claims session saw zero rows, and identity re-bound correctly after
+    each commit.
+  - **Pre-FORCE probe:** `postgres` still saw every row while claiming owner B,
+    confirming it bypasses via the `BYPASSRLS` attribute, so FORCE does not affect
+    migrations or admin access.
+  - **Write matrix W1–W12, run before and after FORCE, identical both times.**
+    Own insert and update succeed. Cross-owner insert, owner reassignment,
+    no-claims insert and a foreign-owner chat message are rejected (`42501`).
+    Cross-owner read, update and delete affect zero rows. The `chat_messages`
+    FK to `auth.users` is accepted without `SELECT` on `auth.users`. Every write
+    ran inside a rolled-back transaction.
+  - **Part 1a — real endpoints as the app role:** `/ask-stream` and `/research`
+    wrote chat and report rows correctly; owner B saw none of owner A's freshly
+    created data. Artifacts deleted by exact id; the mutated session row restored
+    field-for-field.
+  - **Part 2 — real Google-authenticated browser:** a throwaway fixture was
+    uploaded through Storage RLS with the user's own JWT and auto-indexed
+    (1 point, owner A). Its deterministic `paper_id` matched the value predicted
+    before upload. A question, a follow-up, and a follow-up after a page refresh
+    were all grounded on the fixture. Deletion through the UI removed the
+    Postgres row, the Qdrant point and the Storage object. Chat artifacts were
+    deleted by exact id and the session row restored field-for-field.
+    (`/upload` and `/index-document` could not run under a test dependency
+    override because Storage RLS requires a genuine user JWT, so they were
+    validated here instead.)
+  - **Closing verification:** baseline restored exactly; RLS enabled and forced on
+    all four tables; the four policies byte-identical to their originals; no
+    migration changed.
+
+- **Not verified:**
+  - **Owner B browser sign-in was not performed** — no second-account session was
+    run. Cross-owner isolation is verified at the database and endpoint layers only.
+  - True concurrency on the `UNIQUE(owner_id)` race — the retry was exercised with
+    a real `UniqueViolation`, but the two attempts were sequential, not raced.
+
+- **Committed:** local commit `cebd105`. **Not pushed, not deployed.**
 - **Status:** COMPLETE / PASS.
 
 ---
 
 ## 3. Current state
 
-- **D2 = COMPLETE / PASS.**
-- Real Google-authenticated browser QA **passed**.
-- Final read-only Postgres verification **passed** — all checks.
-- **6 real browser-QA chat rows intentionally remain** in the database
-  (1 `chat_sessions`, 6 `chat_messages` for the QA owner). These are genuine
-  authenticated user actions, not synthetic test data, and were deliberately not
-  cleaned up.
-- Row counts at time of writing: `papers` 3, `reports` 0, `chat_sessions` 1,
-  `chat_messages` 6.
-- **Local backend and frontend dev servers are stopped**; ports 8000 and 8080
-  are free.
-- Working tree contains uncommitted D1/D2 work; nothing has been committed or
-  deployed as part of these phases.
+- **C1 = COMPLETE / PASS. No defined major roadmap phase remains.**
+- **Local git:** `HEAD` = `cebd105` (C1 claims plumbing), parent `e144ab0`
+  (D0–D2 checkpoint). Both commits exist **locally only**.
+- **Local application role:** `researchmind_app`, `rolbypassrls = false`.
+- **RLS:** enabled and forced on all four tables; four owner-only policies,
+  unchanged, no explicit `WITH CHECK`.
+- **Local validation baseline** (shared Supabase project and Qdrant cluster):
+
+  | papers | reports | chat_sessions | chat_messages | Qdrant `researchmind_v2` |
+  |---|---|---|---|---|
+  | 3 | 0 | 1 | 6 | 220 |
+
+  All 220 points belong to paper `f8d48357-a77b-5d9e-a0c2-7ff24b25a580`
+  (`status = indexed`). The one chat session and six messages are genuine D2
+  browser-QA rows, intentionally retained. The other two `papers` rows have
+  `status = failed` (see §8 item 3).
+
+### Deployment status — NOT DEPLOYED
+
+**The completed product exists only locally.** Local PASS is not deployment.
+
+| | Local (`cebd105`) | `origin/master` (`d83a16f`) |
+|---|---|---|
+| Date | 2026-09-14 | 2026-06-24 |
+| Authentication | Supabase JWT via JWKS | **none** |
+| Tenant isolation | app filters + forced RLS | **none** |
+| Postgres | `researchmind_app`, RLS forced | **not used** — never reads `DATABASE_URL` |
+| Qdrant collection | `researchmind_v2` | `researchmind` |
+| Environment variables read | 15 | 4 (`GROQ_API_KEY`, `QDRANT_URL`, `QDRANT_API_KEY`, `RERANK_ENABLED`) |
+
+- `origin/master` is **pre-Phase-1.5** and is **not equivalent** to the local
+  completed product. It lacks Phases 1.5, 2, D1, D2 and C1 entirely.
+- Commits `e144ab0` and `cebd105` have **not** been pushed.
+- `render.yaml` sets **`autoDeploy: true`** — pushing to `master` deploys.
+- `render.yaml` declares only `GROQ_API_KEY`, `QDRANT_URL` and `QDRANT_API_KEY`.
+  The local product also requires `DATABASE_URL`, `SUPABASE_URL`,
+  `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` and `VOYAGE_API_KEY`.
+- Whether any service is currently live, which provider hosts it (`render.yaml`
+  names Render; the last commit message names Railway), and which environment
+  variables it holds are **not visible from the repository**.
+- The forced RLS lives in the shared Supabase project. Deployed code at
+  `d83a16f` never connects to Postgres, so it is unaffected by it.
+- **Deployment is not a defined roadmap phase.** It requires its own separately
+  approved plan.
 
 ---
 
-## 4. Next major phase — C1: RLS Hardening
+## 4. C1 — RLS Hardening: design record (COMPLETE)
 
 ### Goal
 
 Make Postgres row-level security an actual enforcement layer rather than a
-decorative one.
+decorative one. **Achieved** — see §2.
 
-### Why it is needed
+### Why it was needed
 
-RLS is currently **inert**, and this is measured, not assumed:
+Before C1, RLS was **inert**, and this was measured, not assumed:
 
-- All four tables report `relrowsecurity = true`, `relforcerowsecurity = false`.
-- Owner-only policies exist on all four (`<table>_owner_only`, `USING (owner_id = auth.uid())`).
-- The application connects as role `postgres`, which **owns the tables** and has
+- All four tables reported `relrowsecurity = true`, `relforcerowsecurity = false`.
+- Owner-only policies existed on all four (`<table>_owner_only`, `USING (owner_id = auth.uid())`).
+- The application connected as role `postgres`, which **owned the tables** and had
   **`rolbypassrls = true`**.
 
 Table owners bypass RLS unless `FORCE` is set, and a `BYPASSRLS` role bypasses it
-regardless. So the policies never execute. **The only thing preventing cross-tenant
-access today is the explicit `WHERE owner_id = :owner_id` in application code.**
-That has been tested extensively and holds — but it is a single layer, and a
-single missed filter in a future endpoint would be a data leak with nothing
-behind it.
+regardless. So the policies never executed. **The only thing preventing
+cross-tenant access before C1 was the explicit `WHERE owner_id = :owner_id` in
+application code** — a single layer, where one missed filter in a future
+endpoint would have been a data leak with nothing behind it.
 
-### The four required changes
+### The four required changes — all landed
 
-These must land **together**; any one alone leaves the system broken or still
-unprotected.
+**a. A non-`BYPASSRLS` database role.** `researchmind_app` — does not own the
+tables, does not carry `BYPASSRLS`, holds only the needed DML.
 
-**a. A non-`BYPASSRLS` database role.** Create a role that does not own the
-tables and does not carry `BYPASSRLS`, grant it only the needed DML, and point
-`DATABASE_URL` at it.
+**b. `FORCE ROW LEVEL SECURITY`.** Set on all four tables in Stage 5. In practice
+enforcement for the app began at Stage 4, because `researchmind_app` never owned
+the tables; FORCE additionally constrains the owner, and would matter if
+`postgres` ever lost `BYPASSRLS`.
 
-**b. `FORCE ROW LEVEL SECURITY`.** Without this, a table owner still bypasses
-policies. Deliberately not set by migration 0003.
+**c. JWT claims into Postgres.** `auth.uid()` reads `request.jwt.claims`, set on
+every transaction from the verified `owner_id` in `app/core/auth.py`.
 
-**c. JWT claims into Postgres.** Policies call `auth.uid()`, which reads a
-request-scoped setting. The backend must pass the verified JWT claims into the
-database session on every request, derived from the same single source in
-`app/core/auth.py`.
-
-**d. `SET LOCAL` discipline for pooled connections.** Claims must be set with
-`SET LOCAL` inside a transaction so they are discarded on commit or rollback.
-The app connects through Supabase's **session-mode pooler**, so a plain `SET`
-would persist on a reused connection and leak one user's identity into the next
-request. **This is the highest-risk item in the phase.**
+**d. `SET LOCAL` discipline for pooled connections.** Claims are set with
+`set_config(..., true)` inside the transaction and discarded on commit or
+rollback. A plain `SET` was proven to persist across statements on the session
+pooler, which is why it is forbidden by a source-level test.
 
 ### Dependencies
 
-D2 complete (met). Requires a Supabase role change and a `DATABASE_URL` change.
-No application feature work depends on C1, and C1 depends on no other phase.
+D2 complete (met). Required a Supabase role and a local `DATABASE_URL` change,
+both done.
 
 ---
 
-## 5. C1 safety and approval gates
+## 5. C1 safety and approval gates — as executed
 
-**C1 must be executed in staged, separately approved steps. No production write
+**C1 was executed in staged, separately approved steps. No production write ran
 without explicit approval for that specific step.**
 
-| Stage | Action | Risk | Rollback |
-|---|---|---|---|
-| 1 | **Read-only audit** — current roles, grants, policy definitions, `auth.uid()` behaviour under the pooler | None | n/a |
-| 2 | **Role creation / grants** — new non-`BYPASSRLS` role; do *not* switch `DATABASE_URL` yet | Low | `DROP ROLE`; app still on the old role |
-| 3 | **Claims plumbing** — `SET LOCAL` per request, still on the bypassing role so policies stay inert | Medium — must prove no leakage across pooled connections | Revert code; no DB change to undo |
-| 4 | **Switch `DATABASE_URL`** to the new role | High — a missing grant locks the app out | Restore previous value |
-| 5 | **`FORCE ROW LEVEL SECURITY`** — last | High — a wrong policy makes data invisible to its owner | `ALTER TABLE … NO FORCE ROW LEVEL SECURITY` |
+| Stage | Action | Risk | Rollback | Outcome |
+|---|---|---|---|---|
+| 1 | **Read-only audit** — current roles, grants, policy definitions, `auth.uid()` behaviour under the pooler | None | n/a | PASS |
+| 2 | **Role creation / grants** — new non-`BYPASSRLS` role; do *not* switch `DATABASE_URL` yet | Low | `DROP OWNED BY researchmind_app; DROP ROLE researchmind_app;` | PASS |
+| 3 | **Claims plumbing** — `SET LOCAL` per request, still on the bypassing role so policies stay inert | Medium — must prove no leakage across pooled connections | Revert code; no DB change to undo | PASS |
+| 4 | **Switch `DATABASE_URL`** to the new role | High — a missing grant locks the app out | Restore previous value | PASS |
+| 5 | **`FORCE ROW LEVEL SECURITY`** — last | High — a wrong policy makes data invisible to its owner | `ALTER TABLE … NO FORCE ROW LEVEL SECURITY` | PASS |
 
-Additional gates:
+Additional gates, all honoured:
 
-- Stage 3 must include an explicit **cross-request leakage test** on a pooled
+- Stage 3 included an explicit **cross-request leakage test** on a pooled
   connection: two different owners in sequence on the same physical connection,
-  proving the second cannot see the first's rows.
-- Every stage states its rollback **before** execution.
-- Preserve the `WHERE owner_id = :owner_id` filters throughout. RLS is defence in
-  depth, **not** a replacement for them; removing them is out of scope.
-- No step may run migrations, re-index, or touch Storage/Qdrant/Voyage/Groq.
+  proving the second could not see the first's rows.
+- Every stage stated its rollback **before** execution.
+- The `WHERE owner_id = :owner_id` filters were preserved throughout. RLS is
+  defence in depth, **not** a replacement for them.
+- No stage ran migrations, re-indexed, or altered a policy.
+- Stage 5 ran the write matrix **before** FORCE as well as after, so a grant
+  problem could not be confused with a FORCE problem.
 
 ---
 
 ## 6. Major phase count
 
-**Exactly 1 defined major phase remains: C1.**
+**No defined major roadmap phase remains.** Count: **0**.
 
-No further phases are defined in this project. None are invented here. Items in
-sections 7 and 8 are a backlog, not phases.
+C1 was the last phase defined in this project. None are invented here. Items in
+sections 7 and 8 are a backlog, not phases, and deployment (§3) is not a defined
+phase.
 
 No completion percentage is given: with no original roadmap document there is no
 denominator, and inventing one would be fabrication.
 
 ---
 
-## 7. Optional technical debt (8 items)
+## 7. Optional technical debt (11 items)
 
 | # | Item | Location |
 |---|---|---|
@@ -312,8 +427,11 @@ denominator, and inventing one would be fabrication.
 | 4 | 8 debug `print()` calls, including the user's query, written to stdout | `app/api/research.py` |
 | 5 | Hardcoded `"researchmind"` collection label (actual collection is `researchmind_v2`) | `src/routes/dashboard.tsx:79` |
 | 6 | Two stale PDFs from June left in the working directory | `backend/ResearchMind_Report.pdf`, `backend/research_report.pdf` |
-| 7 | **All three older `docs/` files are stale or empty** — `ROADMAP.md` predates the security work, `PROJECT_CONTEXT.md` names a replaced stack, `ARCHITECTURE.md` is 0 bytes | `docs/` |
+| 7 | **All three older `docs/` files are stale, empty, or contradictory** — `ROADMAP.md` predates the security work, `ARCHITECTURE.md` is 0 bytes, and `PROJECT_CONTEXT.md` actively contradicts the current system (see the header note) | `docs/` |
 | 8 | Reranking disabled by default (`RERANK_ENABLED=false`) to keep memory low; retrieval quality is unreranked | `app/rag/reranker.py` |
+| 9 | `GRANT USAGE ON SCHEMA auth TO researchmind_app` **granted nothing** — `postgres` does not own schema `auth`. Policies still evaluate `auth.uid()` correctly; only a *direct* `SELECT auth.uid()` by the app role is denied | Supabase `auth` schema |
+| 10 | Policies rely on the **implicit** `WITH CHECK` (Postgres reuses `USING` for writes). Correct today, but an edit to `USING` alone would silently change write rules. Explicit `WITH CHECK` (5b) was deferred | migrations 0001, 0003 |
+| 11 | **Secret hygiene pending:** the `researchmind_app` password and two copies of the `postgres` password exist in a session scratchpad (outside the repository, never committed, absent from git history and transcripts); the repository sits under the OneDrive root, so `backend/.env` may be cloud-synced; rotation of both passwords is recommended before any deployment | local only |
 
 ---
 
@@ -321,7 +439,7 @@ denominator, and inventing one would be fabrication.
 
 | # | Bug | Impact |
 |---|---|---|
-| 1 | CORS entry `"https://*.vercel.app"` **never matches** — Starlette does exact origin matching, not globbing | Vercel preview deployments are blocked. Fails closed, so not a security hole |
+| 1 | CORS entry `"https://*.vercel.app"` **never matches** — Starlette does exact origin matching, not globbing | Vercel preview deployments are blocked. Fails closed, so not a security hole — but a **blocker for any deployment** that uses preview URLs |
 | 2 | `/export-report` returns **HTTP 200 with a JSON error body** when no report exists | `response.ok` is true, so the browser saves a JSON file named `research-report.pdf`. A `404` would fix it |
 | 3 | Papers with `status='failed'` are **invisible in the UI** — 2 of 3 current rows | Users cannot see or retry failed uploads |
 | 4 | `FOLLOW_UP_WORDS` matching is **substring-based** — "net**work**s" contains "work" | Ordinary questions misread as follow-ups, silently prepending a stale topic |
@@ -335,11 +453,15 @@ denominator, and inventing one would be fabrication.
 
 ## 9. Deferred / out of scope
 
-**Major roadmap work:** C1 only (section 4).
+**Major roadmap work:** none defined. C1 is complete (§2, §4).
 
-**Optional cleanup:** the 8 items in section 7. None blocking.
+**Deployment:** not deployed and not a defined phase (§3). Requires its own
+separately approved plan.
 
-**Known bugs:** the 9 items in section 8. None blocking; several are one-line fixes.
+**Optional cleanup:** the 11 items in section 7. None blocking the local product.
+
+**Known bugs:** the 9 items in section 8. None blocking the local product;
+several are one-line fixes. Item 1 blocks preview deployments.
 
 **Explicitly not part of D2 — not defects:**
 
@@ -347,15 +469,22 @@ denominator, and inventing one would be fabrication.
   *layer*. There is no chat-history read endpoint, and `src/routes/ask.tsx` holds
   the transcript in plain `useState`. **The transcript clearing on refresh is
   expected behaviour, not a regression.** The durable state is still present and
-  still drives server-side behaviour — verified in browser QA, where a
-  post-refresh follow-up remained correctly grounded. Surfacing history in the UI
-  would need a new endpoint plus UI work, and was never in D2's scope.
+  still drives server-side behaviour — verified in D2 and again in C1 Part 2,
+  where a post-refresh follow-up remained correctly grounded. Surfacing history
+  in the UI would need a new endpoint plus UI work, and was never in scope.
 - **Concurrency proof for the `UNIQUE(owner_id)` race.** The constraint, the
   `UniqueViolation` and the retry recovery were all verified against real
   Postgres, but the two attempts were forced sequentially rather than raced
   across connections.
-- **Adversarial cross-tenant testing.** With RLS inert, isolation rests entirely
-  on application filters. Proving enforcement under attack is C1 work.
+
+**Not performed in C1:**
+
+- **Owner B browser verification.** Cross-owner isolation was verified at the
+  database layer (Stages 3–5, W1–W12) and the endpoint layer (Part 1a E8), not in
+  a second-account browser session.
+- **Adversarial or penetration testing.** Isolation is enforced at two layers and
+  was tested with deliberate cross-owner reads and writes, but no adversarial
+  testing was carried out.
 
 ---
 
@@ -397,6 +526,17 @@ These rules were established over the course of the project and remain in force.
 12. **Tests must be deterministic and offline.** Anything contacting a real
     service is gated behind `RUN_LIVE_INFRA_TESTS=1` and skips by declaration,
     never by a swallowed connection error.
+13. **The application connects as `researchmind_app`, never `postgres`.**
+    `postgres` is reserved for migrations and administration.
+14. **Database access goes through `session_scope(owner_id)` or
+    `get_db_session`** so every transaction carries claims. Claims are set only
+    with `set_config(..., true)`; a plain session-level `SET` is forbidden and
+    guarded by a source-level test.
+
+### Deployment safety
+
+15. **Never push to `master` without an approved deployment plan.** `render.yaml`
+    sets `autoDeploy: true`, so a push is a deployment.
 
 ---
 
@@ -404,9 +544,12 @@ These rules were established over the course of the project and remain in force.
 
 | | |
 |---|---|
-| **Current phase** | D2 — Durable Persistence: **COMPLETE / PASS** |
-| **Next phase** | C1 — RLS Hardening |
-| **Major phases remaining** | **1** |
-| **Optional cleanup items** | 8 |
+| **Current phase** | C1 — RLS Hardening: **COMPLETE / PASS** |
+| **Next phase** | **None defined** |
+| **Major phases remaining** | **0** |
+| **Local git `HEAD`** | `cebd105` — local only, not pushed |
+| **Deployment** | **NOT DEPLOYED** — `origin/master` is `d83a16f`, pre-Phase-1.5, not equivalent to the local product |
+| **Validation baseline** | papers 3 · reports 0 · chat_sessions 1 · chat_messages 6 · Qdrant 220 |
+| **Optional cleanup items** | 11 |
 | **Known pre-existing bugs** | 9 |
-| **Blockers** | None for C1. Requires a new Supabase role, a `DATABASE_URL` change, and `ALTER TABLE` — each separately approved. The `SET LOCAL` pooled-connection requirement is the principal hazard. |
+| **Blockers** | None for the local product. Any deployment needs its own approved plan: required environment variables, secret rotation, CORS fix, and control over `autoDeploy`. |
