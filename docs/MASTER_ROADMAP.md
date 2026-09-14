@@ -3,18 +3,13 @@
 **Last updated:** 2026-09-14
 **Status of this document:** current and authoritative.
 
-> **This supersedes `docs/ROADMAP.md` as the project roadmap.**
-> `docs/ROADMAP.md` is unchanged since the initial commit and describes a
-> pre-security feature list that no longer reflects the project. It has been
-> left in place deliberately, not updated. `docs/ARCHITECTURE.md` is empty.
->
-> **`docs/PROJECT_CONTEXT.md` contradicts the current system and must not be
-> used as guidance.** It names a replaced stack (Sentence Transformers, Cross
-> Encoder, Ollama/Qwen), documents endpoints that no longer exist in that form
-> (`GET /index-document` is now POST-only; `/ask` was deleted), describes local
-> `uploads/papers/` storage with no authentication, and its coding rules include
-> "Do not replace Ollama". Following it would regress the Phase 1 safety fixes
-> and the Phase 1.5 authentication model.
+> **Older documents removed.** `docs/ROADMAP.md` (a pre-security sprint list),
+> `docs/ARCHITECTURE.md` (empty), `docs/API_REFERENCE.md` (listed endpoints that
+> no longer exist in that form) and `docs/PROJECT_CONTEXT.md` (described the
+> replaced Sentence Transformers / Cross Encoder / Ollama stack, unauthenticated
+> local storage, and the rule "Do not replace Ollama") were deleted on 2026-09-14.
+> They remain in git history at `25064eb`. For the live API surface, use the
+> backend's generated OpenAPI docs at `/docs`.
 >
 > Every claim below is tied to a durable artifact — a test file, a migration,
 > a code location, a commit, or a recorded verification run. Where something
@@ -417,7 +412,7 @@ denominator, and inventing one would be fabrication.
 
 ---
 
-## 7. Optional technical debt (11 items)
+## 7. Optional technical debt (11 items, 2 resolved)
 
 | # | Item | Location |
 |---|---|---|
@@ -426,8 +421,8 @@ denominator, and inventing one would be fabrication.
 | 3 | Dead SSE `"sources"` field duplicating `"citations"` in the `done` event | `app/api/ask_stream.py:325` |
 | 4 | 8 debug `print()` calls, including the user's query, written to stdout | `app/api/research.py` |
 | 5 | Hardcoded `"researchmind"` collection label (actual collection is `researchmind_v2`) | `src/routes/dashboard.tsx:79` |
-| 6 | Two stale PDFs from June left in the working directory | `backend/ResearchMind_Report.pdf`, `backend/research_report.pdf` |
-| 7 | **All three older `docs/` files are stale, empty, or contradictory** — `ROADMAP.md` predates the security work, `ARCHITECTURE.md` is 0 bytes, and `PROJECT_CONTEXT.md` actively contradicts the current system (see the header note) | `docs/` |
+| 6 | ~~Two stale PDFs from June left in the working directory~~ **Resolved 2026-09-14** — deleted in the local generated-artifact cleanup (ignored files, never committed) | `backend/` |
+| 7 | ~~Older `docs/` files stale, empty, or contradictory~~ **Resolved 2026-09-14** — `ROADMAP.md`, `ARCHITECTURE.md`, `API_REFERENCE.md` and `PROJECT_CONTEXT.md` deleted (see the header note) | `docs/` |
 | 8 | Reranking disabled by default (`RERANK_ENABLED=false`) to keep memory low; retrieval quality is unreranked | `app/rag/reranker.py` |
 | 9 | `GRANT USAGE ON SCHEMA auth TO researchmind_app` **granted nothing** — `postgres` does not own schema `auth`. Policies still evaluate `auth.uid()` correctly; only a *direct* `SELECT auth.uid()` by the app role is denied | Supabase `auth` schema |
 | 10 | Policies rely on the **implicit** `WITH CHECK` (Postgres reuses `USING` for writes). Correct today, but an edit to `USING` alone would silently change write rules. Explicit `WITH CHECK` (5b) was deferred | migrations 0001, 0003 |
@@ -458,7 +453,7 @@ denominator, and inventing one would be fabrication.
 **Deployment:** not deployed and not a defined phase (§3). Requires its own
 separately approved plan.
 
-**Optional cleanup:** the 11 items in section 7. None blocking the local product.
+**Optional cleanup:** 9 open items in section 7 (2 resolved). None blocking the local product.
 
 **Known bugs:** the 9 items in section 8. None blocking the local product;
 several are one-line fixes. Item 1 blocks preview deployments.
@@ -550,6 +545,6 @@ These rules were established over the course of the project and remain in force.
 | **Local git `HEAD`** | `cebd105` — local only, not pushed |
 | **Deployment** | **NOT DEPLOYED** — `origin/master` is `d83a16f`, pre-Phase-1.5, not equivalent to the local product |
 | **Validation baseline** | papers 3 · reports 0 · chat_sessions 1 · chat_messages 6 · Qdrant 220 |
-| **Optional cleanup items** | 11 |
+| **Optional cleanup items** | 9 open (2 resolved) |
 | **Known pre-existing bugs** | 9 |
 | **Blockers** | None for the local product. Any deployment needs its own approved plan: required environment variables, secret rotation, CORS fix, and control over `autoDeploy`. |
