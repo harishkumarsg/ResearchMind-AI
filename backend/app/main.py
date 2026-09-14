@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.cors import get_allowed_origins
+
 # ====================================
 # Core APIs
 # ====================================
@@ -77,16 +79,9 @@ AI-powered academic research platform with:
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:8080",
-        "http://127.0.0.1:8080",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        # Vercel deployment — update with your actual domain after deploy
-        "https://researchmind-ai.vercel.app",
-        # Allow all vercel preview URLs
-        "https://*.vercel.app",
-    ],
+    # Exact origins only: localhost development + the production frontend,
+    # plus optional CORS_EXTRA_ORIGINS. See app/core/cors.py.
+    allow_origins=get_allowed_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
