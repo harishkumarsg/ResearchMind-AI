@@ -15,9 +15,10 @@ checked out for that whole duration, per concurrent user.
 """
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
 from app.db.models import ChatMessage, ChatSession, Paper
@@ -96,9 +97,11 @@ def load_chat_state(
             )
             # Newest-first with the limit applied in the database, then
             # reversed in Python, so only `limit` rows are fetched no
-            # matter how long the conversation is. The id tiebreak keeps
-            # the order total when two rows share a timestamp.
-            .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
+            # matter how long the conversation is. created_at alone is a
+            # total, chronological order: _next_message_time never lets
+            # two messages in a session share a timestamp. A random UUID
+            # would be no tiebreak at all.
+            .order_by(ChatMessage.created_at.desc())
             .limit(limit)
             .all()
         )
@@ -133,9 +136,12 @@ def _owns_paper(db, owner_uuid: uuid.UUID, paper_id: uuid.UUID) -> bool:
 
 
 def _get_or_create_session(db, owner_uuid: uuid.UUID) -> ChatSession:
+    # Row-locked until the transaction ends, so message timestamps
+    # assigned under it are strictly ordered (see _next_message_time).
     existing = (
         db.query(ChatSession)
         .filter(ChatSession.owner_id == owner_uuid)
+        .with_for_update()
         .first()
     )
     if existing is not None:
@@ -147,6 +153,41 @@ def _get_or_create_session(db, owner_uuid: uuid.UUID) -> ChatSession:
     # violation surfaces here rather than at the end of the transaction.
     db.flush()
     return created
+
+
+def _next_message_time(
+    db, session_id: uuid.UUID, owner_uuid: uuid.UUID
+) -> datetime:
+    """created_at for the next message in this session: now, or one
+    microsecond after the session's latest message if the clock has not
+    moved past it.
+
+    History is ordered by created_at alone, so two messages in a session
+    must never share a timestamp, and the wall clock cannot promise that:
+    consecutive turns can land inside a single clock tick (about 1 ms
+    with Python 3.11 on Windows), and a clock can step backwards. One
+    microsecond is the finest step timestamptz stores.
+
+    The caller must hold the session row lock, taken in
+    _get_or_create_session or persist_assistant_turn. Without it, two
+    concurrent writers could read the same latest timestamp.
+    """
+    latest = (
+        db.query(func.max(ChatMessage.created_at))
+        .filter(
+            ChatMessage.session_id == session_id,
+            ChatMessage.owner_id == owner_uuid,
+        )
+        .scalar()
+    )
+    now = _utcnow()
+    if latest is None:
+        return now
+    if latest.tzinfo is None:
+        # SQLite, the offline test database, reads timestamps back naive.
+        # Every stored value is UTC.
+        latest = latest.replace(tzinfo=timezone.utc)
+    return max(now, latest + timedelta(microseconds=1))
 
 
 def persist_user_turn(owner_id: str, question: str) -> uuid.UUID:
@@ -162,14 +203,14 @@ def persist_user_turn(owner_id: str, question: str) -> uuid.UUID:
         with session_scope(owner_id) as db:
             chat_session = _get_or_create_session(db, owner_uuid)
             session_id = chat_session.id
-            db.add(
-                ChatMessage(
-                    session_id=session_id,
-                    owner_id=owner_uuid,
-                    role="user",
-                    content=question,
-                )
+            message = ChatMessage(
+                session_id=session_id,
+                owner_id=owner_uuid,
+                role="user",
+                content=question,
             )
+            message.created_at = _next_message_time(db, session_id, owner_uuid)
+            db.add(message)
             return session_id
 
     try:
@@ -199,23 +240,26 @@ def persist_assistant_turn(
     owner_uuid = uuid.UUID(owner_id)
 
     with session_scope(owner_id) as db:
-        db.add(
-            ChatMessage(
-                session_id=session_id,
-                owner_id=owner_uuid,
-                role="assistant",
-                content=answer,
-            )
-        )
-
+        # Lock the session row before stamping the message; see
+        # _next_message_time.
         chat_session = (
             db.query(ChatSession)
             .filter(
                 ChatSession.id == session_id,
                 ChatSession.owner_id == owner_uuid,
             )
+            .with_for_update()
             .first()
         )
+
+        message = ChatMessage(
+            session_id=session_id,
+            owner_id=owner_uuid,
+            role="assistant",
+            content=answer,
+        )
+        message.created_at = _next_message_time(db, session_id, owner_uuid)
+        db.add(message)
 
         if chat_session is None:
             return

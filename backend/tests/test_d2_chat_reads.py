@@ -12,6 +12,8 @@ Fully offline and deterministic: in-memory SQLite behind the real
 session_scope(), with Qdrant, the embedder, the reranker and Groq
 mocked. No Postgres, no network.
 """
+import datetime
+import itertools
 import json
 import os
 import sys
@@ -29,11 +31,11 @@ load_dotenv(os.path.join(BACKEND_DIR, ".env"))
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Query, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.auth import get_current_owner_id
-from app.db.models import Base, ChatSession, Paper
+from app.db.models import Base, ChatMessage, ChatSession, Paper
 from app.memory import _store as module_store
 from app.services.chat_store import ChatState, load_chat_state
 
@@ -249,6 +251,83 @@ class TestHistoryReconstruction(ChatReadTestCase):
                 "User: Question 5?", "Assistant: Answer 5.",
             ],
         )
+
+    def assert_messages_strictly_ordered(self, expected_contents):
+        """Stored created_at values are unique, and ordering by them alone
+        reproduces the order the turns were written in."""
+        session = self.factory()
+        try:
+            rows = session.query(ChatMessage).order_by(ChatMessage.created_at).all()
+        finally:
+            session.close()
+        stamps = [row.created_at for row in rows]
+        self.assertEqual(len(set(stamps)), len(stamps), "two messages share a created_at")
+        self.assertEqual([row.content for row in rows], expected_contents)
+
+    def test_history_order_survives_a_clock_that_does_not_advance(self):
+        """Every turn read from a frozen clock: the stored timestamps must
+        still strictly increase, so history is rebuilt in order without
+        falling back on the random message id."""
+        self.authenticate_as(USER_A)
+        frozen = datetime.datetime(2026, 9, 14, 12, 0, tzinfo=datetime.timezone.utc)
+
+        with patch("app.services.chat_store._utcnow", return_value=frozen):
+            for n in range(4):
+                self.ask(f"Question {n}?", answer=f"Answer {n}.")
+
+        self.assert_messages_strictly_ordered(
+            [text for n in range(4) for text in (f"Question {n}?", f"Answer {n}.")]
+        )
+        self.assertEqual(
+            load_chat_state(USER_A).history,
+            [
+                "User: Question 1?", "Assistant: Answer 1.",
+                "User: Question 2?", "Assistant: Answer 2.",
+                "User: Question 3?", "Assistant: Answer 3.",
+            ],
+        )
+
+    def test_history_order_survives_a_clock_that_steps_backwards(self):
+        self.authenticate_as(USER_A)
+        start = datetime.datetime(2026, 9, 14, 12, 0, tzinfo=datetime.timezone.utc)
+        ticks = itertools.count()
+
+        def backwards_clock():
+            return start - datetime.timedelta(seconds=next(ticks))
+
+        with patch("app.services.chat_store._utcnow", side_effect=backwards_clock):
+            for n in range(3):
+                self.ask(f"Question {n}?", answer=f"Answer {n}.")
+
+        self.assert_messages_strictly_ordered(
+            [text for n in range(3) for text in (f"Question {n}?", f"Answer {n}.")]
+        )
+        self.assertEqual(
+            load_chat_state(USER_A).history,
+            [
+                "User: Question 0?", "Assistant: Answer 0.",
+                "User: Question 1?", "Assistant: Answer 1.",
+                "User: Question 2?", "Assistant: Answer 2.",
+            ],
+        )
+
+    def test_message_writes_lock_the_session_row(self):
+        """Strictly increasing timestamps hold across concurrent requests
+        only because each message is stamped under the session row lock.
+        SQLite ignores FOR UPDATE, so assert the lock is requested."""
+        locked = []
+        original = Query.with_for_update
+
+        def spy(query, *args, **kwargs):
+            locked.append(query.column_descriptions[0]["entity"])
+            return original(query, *args, **kwargs)
+
+        self.authenticate_as(USER_A)
+        with patch.object(Query, "with_for_update", spy):
+            self.ask("First question?", answer="First answer.")
+
+        # One lock for the user turn, one for the assistant turn.
+        self.assertEqual(locked, [ChatSession, ChatSession])
 
     def test_current_question_is_not_in_its_own_history(self):
         """load_chat_state must run before persist_user_turn."""
