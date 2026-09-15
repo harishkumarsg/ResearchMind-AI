@@ -10,9 +10,14 @@ import {
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { searchPapers } from "@/lib/api";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { RateLimitError, searchPapers } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { queryKeys } from "@/lib/query-keys";
+
+// Every /search call embeds the query with Voyage, which is rate-limited, so
+// the request waits for typing to pause instead of firing on each keystroke.
+const SEARCH_DEBOUNCE_MS = 450;
 
 export const Route = createFileRoute("/search")({
   head: () => ({
@@ -23,18 +28,31 @@ export const Route = createFileRoute("/search")({
 
 function SearchPage() {
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebouncedValue(query, SEARCH_DEBOUNCE_MS);
+  const isDebouncing = query !== debouncedQuery;
   const { user } = useAuth();
   const userId = user?.id;
 
   const {
-    data: results = [],
-    isLoading,
-    error,
+    data = [],
+    isLoading: isSearching,
+    error: searchError,
   } = useQuery({
-    queryKey: queryKeys.search(userId, query),
-    queryFn: () => searchPapers(query),
-    enabled: !!userId && query.length > 2,
+    // Keyed by the query it answers: a late response for an older query lands
+    // under that query's key and cannot replace the newer query's results.
+    queryKey: queryKeys.search(userId, debouncedQuery),
+    // React Query aborts this signal once the key has been superseded.
+    queryFn: ({ signal }) => searchPapers(debouncedQuery, signal),
+    enabled: !!userId && debouncedQuery.length > 2,
+    // Retrying a rate limit only spends more of the same quota.
+    retry: (failureCount, error) => !(error instanceof RateLimitError) && failureCount < 3,
   });
+
+  // Until typing settles, the query still holds the previous search's outcome,
+  // so show the loading state instead — as every keystroke did before.
+  const results = isDebouncing ? [] : data;
+  const error = isDebouncing ? null : searchError;
+  const isLoading = isSearching || (isDebouncing && query.length > 2);
 
   return (
     <AppShell
@@ -86,7 +104,9 @@ function SearchPage() {
 
       {error && (
         <div className="mt-8 rounded-xl border border-red-500/20 bg-red-500/5 p-4 text-sm text-red-400">
-          Failed to search papers.
+          {error instanceof RateLimitError
+            ? "Search is busy right now. Please wait a moment and try again."
+            : "Failed to search papers."}
         </div>
       )}
 
@@ -154,6 +174,7 @@ function SearchPage() {
       {/* Empty State */}
 
       {!isLoading &&
+        !error &&
         query.length > 2 &&
         results.length === 0 && (
           <div className="mt-12 text-center text-muted-foreground">

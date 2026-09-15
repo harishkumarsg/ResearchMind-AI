@@ -211,10 +211,34 @@ export interface AskStreamEvent {
 // Core APIs
 // ============================================================
 
-export async function searchPapers(query: string): Promise<SearchResult[]> {
-  const response = await authFetch(`${API_BASE_URL}/search?query=${encodeURIComponent(query)}`);
+/**
+ * Thrown when search is rate-limited. The backend never answers 429 itself:
+ * once its own Voyage backoff is exhausted it returns 200 with
+ * {"status": "error", "message": <Voyage's text>}, so both shapes are
+ * recognised. The upstream message is not carried through — it can contain
+ * provider billing details that do not belong in the UI.
+ */
+export class RateLimitError extends Error {
+  constructor(message = "Search is temporarily rate-limited.") {
+    super(message);
+    this.name = "RateLimitError";
+  }
+}
+
+const RATE_LIMIT_MESSAGE = /rate.?limit|too many requests/i;
+
+export async function searchPapers(query: string, signal?: AbortSignal): Promise<SearchResult[]> {
+  const response = await authFetch(`${API_BASE_URL}/search?query=${encodeURIComponent(query)}`, {
+    signal,
+  });
+  if (response.status === 429) {
+    throw new RateLimitError();
+  }
   const data = await response.json();
   if (data.status !== "success") {
+    if (typeof data.message === "string" && RATE_LIMIT_MESSAGE.test(data.message)) {
+      throw new RateLimitError();
+    }
     throw new Error(data.message || "Search failed");
   }
   return data.results;

@@ -15,6 +15,7 @@ import {
   describeIndexResult,
   partitionCitations,
   AuthenticationRequiredError,
+  RateLimitError,
   type IndexResult,
   type Citation,
 } from "@/lib/api";
@@ -68,6 +69,58 @@ describe("authenticated API calls (authFetch)", () => {
 
     await expect(searchPapers("anything")).rejects.toThrow(AuthenticationRequiredError);
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("searchPapers — rate limits and cancellation", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    mockSupabaseWithSession("test-access-token-123");
+  });
+
+  const jsonResponse = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status });
+
+  it("passes the abort signal through to fetch", async () => {
+    const fetchSpy = vi
+      .spyOn(global, "fetch")
+      .mockResolvedValue(jsonResponse({ status: "success", results: [] }));
+    const controller = new AbortController();
+
+    await searchPapers("attention", controller.signal);
+
+    expect(fetchSpy.mock.calls[0][1]?.signal).toBe(controller.signal);
+  });
+
+  it("turns an HTTP 429 into RateLimitError without parsing the body", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(new Response("Too Many Requests", { status: 429 }));
+
+    await expect(searchPapers("attention")).rejects.toBeInstanceOf(RateLimitError);
+  });
+
+  it("recognises the backend's 200 error body carrying an upstream rate-limit message", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      jsonResponse({
+        status: "error",
+        message: "You will have reduced rate limits of 3 RPM and 10K TPM until billing is added.",
+      }),
+    );
+
+    const error = await searchPapers("attention").catch((e) => e);
+
+    expect(error).toBeInstanceOf(RateLimitError);
+    expect(error.message).not.toMatch(/RPM|billing/);
+  });
+
+  it("keeps any other backend error an ordinary error", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      jsonResponse({ status: "error", message: "Collection not found" }),
+    );
+
+    const error = await searchPapers("attention").catch((e) => e);
+
+    expect(error).not.toBeInstanceOf(RateLimitError);
+    expect(error.message).toBe("Collection not found");
   });
 });
 
