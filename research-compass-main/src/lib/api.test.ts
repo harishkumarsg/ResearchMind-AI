@@ -8,6 +8,11 @@ vi.mock("@/lib/supabase", () => ({
 import { getSupabaseClient } from "@/lib/supabase";
 import {
   searchPapers,
+  comparePapers,
+  generateReport,
+  summarizePaper,
+  getPaperDetails,
+  retryUnlessRateLimited,
   streamAskQuestion,
   getPapers,
   getDashboardStats,
@@ -121,6 +126,87 @@ describe("searchPapers — rate limits and cancellation", () => {
 
     expect(error).not.toBeInstanceOf(RateLimitError);
     expect(error.message).toBe("Collection not found");
+  });
+});
+
+describe("upstream throttling is classified the same way on every provider-backed call", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    mockSupabaseWithSession("test-access-token-123");
+  });
+
+  const jsonResponse = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status });
+
+  // Verbatim what Voyage returned in production, billing wording and all.
+  const VOYAGE_BILLING_TEXT =
+    "You will have reduced rate limits of 3 RPM and 10K TPM until billing is added.";
+
+  const callers: [string, () => Promise<unknown>][] = [
+    ["comparePapers", () => comparePapers("a.pdf", "b.pdf")],
+    ["generateReport", () => generateReport("vision language models")],
+    ["summarizePaper", () => summarizePaper("a.pdf")],
+    ["getPaperDetails", () => getPaperDetails("a.pdf")],
+  ];
+
+  for (const [name, call] of callers) {
+    it(`${name} raises RateLimitError and never leaks the provider's billing wording`, async () => {
+      vi.spyOn(global, "fetch").mockResolvedValue(
+        jsonResponse({ status: "error", message: VOYAGE_BILLING_TEXT }),
+      );
+
+      const error: any = await call().catch((e) => e);
+
+      expect(error).toBeInstanceOf(RateLimitError);
+      expect(error.message).not.toMatch(/RPM|TPM|billing|Voyage/i);
+    });
+  }
+
+  // Quota/credit phrasings carry no "rate limit" wording, yet mean the same
+  // thing: retrying them would spend more of the exhausted allowance.
+  for (const message of [
+    "You have exceeded your monthly quota.",
+    "Insufficient credits remaining on this account.",
+    "429 Too Many Requests",
+  ]) {
+    it(`treats "${message}" as throttling, not an ordinary failure`, async () => {
+      vi.spyOn(global, "fetch").mockResolvedValue(jsonResponse({ status: "error", message }));
+
+      await expect(comparePapers("a.pdf", "b.pdf")).rejects.toBeInstanceOf(RateLimitError);
+    });
+  }
+
+  it("leaves an ordinary application error generic, with its message intact", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      jsonResponse({ status: "error", message: "Paper not found: vaswani_2017.pdf" }),
+    );
+
+    const error = await comparePapers("vaswani_2017.pdf", "b.pdf").catch((e) => e);
+
+    expect(error).not.toBeInstanceOf(RateLimitError);
+    expect(error.message).toBe("Paper not found: vaswani_2017.pdf");
+  });
+
+  it("falls back to the caller's own wording when the backend sends no message", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(jsonResponse({ status: "error" }));
+
+    const error = await generateReport("topic").catch((e) => e);
+
+    expect(error).not.toBeInstanceOf(RateLimitError);
+    expect(error.message).toBe("Report generation failed");
+  });
+});
+
+describe("retryUnlessRateLimited — a throttled query must never be retried", () => {
+  it("refuses to retry a RateLimitError, however early the failure", () => {
+    expect(retryUnlessRateLimited(0, new RateLimitError())).toBe(false);
+    expect(retryUnlessRateLimited(2, new RateLimitError())).toBe(false);
+  });
+
+  it("still retries ordinary failures, up to three attempts", () => {
+    expect(retryUnlessRateLimited(0, new Error("network down"))).toBe(true);
+    expect(retryUnlessRateLimited(2, new Error("network down"))).toBe(true);
+    expect(retryUnlessRateLimited(3, new Error("network down"))).toBe(false);
   });
 });
 
@@ -290,6 +376,25 @@ describe("describeIndexResult — no field can ever render as 'undefined'", () =
 
     expect(outcome.kind).toBe("failed");
     expect(outcome.message).toBe("Voyage API failure");
+  });
+
+  it("replaces upstream throttling text with our own wording", () => {
+    const outcome = describeIndexResult(
+      makeResult({
+        papers_found: 1,
+        papers_failed: 1,
+        failed: [
+          {
+            paper_id: "p1",
+            error: "You will have reduced rate limits of 3 RPM and 10K TPM until billing is added.",
+          },
+        ],
+      }),
+    );
+
+    expect(outcome.kind).toBe("failed");
+    expect(outcome.message).not.toMatch(/RPM|TPM|billing/i);
+    expect(outcome.message).toMatch(/busy right now/i);
   });
 });
 

@@ -137,9 +137,14 @@ export function describeIndexResult(result: IndexResult): IndexOutcome {
     };
   }
   if (result.papers_failed > 0) {
+    const failure = result.failed[0]?.error;
     return {
       kind: "failed",
-      message: result.failed[0]?.error || "Indexing failed for the uploaded paper.",
+      // Provider throttling text can carry billing wording, which is not
+      // ours to show; genuine indexing errors still surface verbatim.
+      message: isRateLimitMessage(failure)
+        ? RATE_LIMITED_MESSAGE
+        : failure || "Indexing failed for the uploaded paper.",
     };
   }
   return {
@@ -212,20 +217,60 @@ export interface AskStreamEvent {
 // ============================================================
 
 /**
- * Thrown when search is rate-limited. The backend never answers 429 itself:
- * once its own Voyage backoff is exhausted it returns 200 with
- * {"status": "error", "message": <Voyage's text>}, so both shapes are
- * recognised. The upstream message is not carried through — it can contain
- * provider billing details that do not belong in the UI.
+ * Shown wherever an upstream embedding call is throttled. Deliberately
+ * provider-neutral and free of billing wording: this same text now backs
+ * Ask, Compare, Reports, Paper details and indexing, not just search.
+ */
+const RATE_LIMITED_MESSAGE =
+  "The research service is busy right now. Please wait a moment and try again.";
+
+/**
+ * Thrown when an upstream provider call is rate-limited. The backend never
+ * answers 429 itself: once its own Voyage backoff is exhausted it returns
+ * 200 with {"status": "error", "message": <Voyage's text>}, so both shapes
+ * are recognised. The upstream message is not carried through — it can
+ * contain provider billing details that do not belong in the UI.
  */
 export class RateLimitError extends Error {
-  constructor(message = "Search is temporarily rate-limited.") {
+  constructor(message = RATE_LIMITED_MESSAGE) {
     super(message);
     this.name = "RateLimitError";
   }
 }
 
-const RATE_LIMIT_MESSAGE = /rate.?limit|too many requests/i;
+// Upstream throttling as it reaches us through the backend's 200
+// {"status": "error"} body. Quota/credit/billing variants are matched
+// deliberately: they are the same "wait and try again" situation, and
+// letting them fall through as ordinary errors is exactly what lets
+// React Query retry straight back into the limit.
+const RATE_LIMIT_MESSAGE = /rate.?limit|too many requests|quota|insufficient credit|billing/i;
+
+function isRateLimitMessage(message: unknown): boolean {
+  return typeof message === "string" && RATE_LIMIT_MESSAGE.test(message);
+}
+
+/**
+ * The ONE place a backend 200 {"status": "error"} body becomes an
+ * exception. Upstream throttling becomes RateLimitError, carrying our
+ * wording rather than the provider's. Every other backend message is
+ * passed through unchanged — those are this application's own diagnostics
+ * ("Paper not found: x.pdf") and are worth showing.
+ */
+function throwForErrorBody(data: { message?: unknown }, fallback: string): never {
+  if (isRateLimitMessage(data.message)) {
+    throw new RateLimitError();
+  }
+  throw new Error(typeof data.message === "string" && data.message ? data.message : fallback);
+}
+
+/**
+ * React Query retry rule for provider-backed queries: a throttled request
+ * must never be retried, since that only spends more of the same quota.
+ * Everything else keeps the default three attempts.
+ */
+export function retryUnlessRateLimited(failureCount: number, error: Error): boolean {
+  return !(error instanceof RateLimitError) && failureCount < 3;
+}
 
 export async function searchPapers(query: string, signal?: AbortSignal): Promise<SearchResult[]> {
   const response = await authFetch(`${API_BASE_URL}/search?query=${encodeURIComponent(query)}`, {
@@ -236,10 +281,7 @@ export async function searchPapers(query: string, signal?: AbortSignal): Promise
   }
   const data = await response.json();
   if (data.status !== "success") {
-    if (typeof data.message === "string" && RATE_LIMIT_MESSAGE.test(data.message)) {
-      throw new RateLimitError();
-    }
-    throw new Error(data.message || "Search failed");
+    throwForErrorBody(data, "Search failed");
   }
   return data.results;
 }
@@ -356,7 +398,7 @@ export async function summarizePaper(paperName: string): Promise<SummarizeResult
   );
   const data = await response.json();
   if (data.status !== "success") {
-    throw new Error(data.message || "Summarization failed");
+    throwForErrorBody(data, "Summarization failed");
   }
   return data;
 }
@@ -367,7 +409,7 @@ export async function comparePapers(paper1: string, paper2: string): Promise<Com
   );
   const data = await response.json();
   if (data.status !== "success") {
-    throw new Error(data.message || "Comparison failed");
+    throwForErrorBody(data, "Comparison failed");
   }
   return data;
 }
@@ -376,7 +418,7 @@ export async function generateReport(query: string): Promise<ResearchResult> {
   const response = await authFetch(`${API_BASE_URL}/research?query=${encodeURIComponent(query)}`);
   const data = await response.json();
   if (data.status !== "success") {
-    throw new Error(data.message || "Report generation failed");
+    throwForErrorBody(data, "Report generation failed");
   }
   return data;
 }
@@ -387,7 +429,7 @@ export async function getPaperDetails(paperName: string): Promise<PaperDetails> 
   );
   const data = await response.json();
   if (data.status !== "success") {
-    throw new Error(data.message || "Paper details fetch failed");
+    throwForErrorBody(data, "Paper details fetch failed");
   }
   return data;
 }

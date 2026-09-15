@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { getPaperDetails, summarizePaper, deletePaper } from "@/lib/api";
+import { getPaperDetails, summarizePaper, deletePaper, retryUnlessRateLimited } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { queryKeys } from "@/lib/query-keys";
 import { useState } from "react";
@@ -47,6 +47,9 @@ function PaperDetailsPage() {
     queryKey: queryKeys.paperDetails(userId, paperName),
     queryFn: () => getPaperDetails(paperName),
     enabled: !!userId,
+    // Each load embeds the paper name with Voyage, so a throttled request
+    // must not be retried — that only spends more of the same quota.
+    retry: retryUnlessRateLimited,
   });
 
   const handleSummarize = async () => {
