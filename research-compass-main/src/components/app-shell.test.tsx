@@ -151,6 +151,16 @@ describe("AppShell sidebar Search control", () => {
   });
 });
 
+describe("AppShell brand", () => {
+  it("uses the ResearchMind mark in the sidebar instead of a letter tile", () => {
+    renderShell();
+
+    const brand = screen.getByRole("link", { name: "ResearchMind" });
+    expect(brand.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+    expect(brand).toHaveTextContent(/^ResearchMind$/);
+  });
+});
+
 describe("Library search input", () => {
   beforeEach(() => {
     router.pathname = "/search";

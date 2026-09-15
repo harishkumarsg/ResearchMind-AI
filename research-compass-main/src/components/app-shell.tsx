@@ -15,6 +15,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
+import { BrandMark } from "@/components/brand-mark";
 import { deletePaper, getPapers } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { queryKeys } from "@/lib/query-keys";
@@ -128,11 +129,9 @@ export function AppShell({
         <aside className="sticky top-0 hidden h-screen flex-col border-r border-border/60 bg-sidebar md:flex">
           <Link
             to="/"
-            className="flex h-14 items-center gap-2 border-b border-border/60 px-5 text-[15px] font-medium tracking-tight"
+            className="flex h-14 items-center gap-2.5 border-b border-border/60 px-5 text-[15px] font-medium tracking-tight"
           >
-            <span className="grid h-7 w-7 place-items-center rounded-md bg-primary text-primary-foreground text-xs">
-              R
-            </span>
+            <BrandMark size={22} />
             ResearchMind
           </Link>
           <div className="px-3 pt-4">

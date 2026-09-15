@@ -1,22 +1,29 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { Link } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
-  ArrowUpRight,
-  BookOpen,
-  Check,
+  Download,
   FileText,
   GitCompare,
+  KeyRound,
   Library,
+  MessageSquare,
   Quote,
   Search,
-  Sparkles,
+  ShieldCheck,
   Upload,
+  UserRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
+import {
+  AskWorkspacePreview,
+  BrowserFrame,
+  ComparePreview,
+  LibrarySearchPreview,
+  ReportPreview,
+} from "@/components/product-preview";
 import {
   Accordion,
   AccordionContent,
@@ -24,408 +31,383 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 
+const TITLE = "ResearchMind Lab — Research you can verify";
+const SUMMARY =
+  "Upload papers, search your private research library, ask grounded questions, and generate reports with page-level citations.";
+
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "ResearchMind AI — AI for academic research" },
-      { name: "description", content: "Upload papers. Build a private knowledge base. Ask grounded questions. Generate publication-ready literature reviews." },
-      { property: "og:title", content: "ResearchMind AI" },
-      { property: "og:description", content: "AI-native research workspace for serious academics and labs." },
+      { title: TITLE },
+      { name: "description", content: SUMMARY },
+      { property: "og:title", content: TITLE },
+      { property: "og:description", content: SUMMARY },
     ],
   }),
   component: Index,
 });
 
-const logos = ["ETH Zürich", "TU München", "TU Delft", "KTH", "RWTH Aachen", "Chalmers", "Max Planck", "MIT Media Lab"];
+// Every statement below describes behaviour the application implements today.
 
-const workflow = [
-  { n: "01", icon: Upload, title: "Upload papers", body: "Drop PDFs, BibTeX, or arXiv IDs. ResearchMind parses sections, figures, and citations in seconds." },
-  { n: "02", icon: Library, title: "Build a knowledge base", body: "Private, encrypted libraries scoped to a topic, lab, or thesis chapter — fully searchable." },
-  { n: "03", icon: Quote, title: "Ask grounded questions", body: "Every claim is anchored to a passage. No hallucinated citations. Ever." },
-  { n: "04", icon: FileText, title: "Generate reports", body: "Drafts a structured literature review you can edit in a publication-quality editor." },
-  { n: "05", icon: ArrowUpRight, title: "Export findings", body: "Export to PDF, LaTeX, Word, or BibTeX — formatted for IEEE, APA, ACM, or your custom style." },
+const flow = ["Upload", "Index", "Search", "Ask", "Export"];
+
+const capabilities = [
+  {
+    icon: Search,
+    title: "Search your papers",
+    body: "Semantic retrieval across your private research library, showing the paper and page each result came from.",
+  },
+  {
+    icon: Quote,
+    title: "Ask with evidence",
+    body: "Answers grounded in passages retrieved from your papers, with page citations. Passages that were retrieved but not cited are listed too.",
+  },
+  {
+    icon: GitCompare,
+    title: "Compare studies",
+    body: "Put two indexed papers side by side and compare their approaches and findings.",
+  },
+  {
+    icon: FileText,
+    title: "Generate reports",
+    body: "Turn a research question into a structured literature review with citations, and export it as a PDF.",
+  },
 ];
 
-const features = [
-  { icon: Search, title: "Semantic search across your library", body: "Vector + lexical retrieval tuned on the SciDocs benchmark. Finds the paragraph, not just the paper." },
-  { icon: GitCompare, title: "Side-by-side study comparison", body: "Compare methodology, datasets, and results across five papers in a single canvas." },
-  { icon: BookOpen, title: "Citation-grade answers", body: "Each sentence in an AI response is linked to a source span, with page and paragraph anchors." },
-  { icon: FileText, title: "Publication-ready editor", body: "Track changes, inline citations, and live BibTeX. Export to LaTeX without losing structure." },
+const steps = [
+  { n: "01", icon: Upload, title: "Upload papers", body: "Add research papers as PDF files." },
+  {
+    n: "02",
+    icon: Library,
+    title: "Build your library",
+    body: "Each paper is split into passages and indexed, so the whole library is searchable by meaning.",
+  },
+  {
+    n: "03",
+    icon: MessageSquare,
+    title: "Ask grounded questions",
+    body: "Answers are generated from the most relevant passages and cite the pages they use.",
+  },
+  {
+    n: "04",
+    icon: FileText,
+    title: "Generate reports",
+    body: "Draft a structured literature review from your library, with its citations.",
+  },
+  { n: "05", icon: Download, title: "Export findings", body: "Download a report as a PDF." },
+];
+
+const safeguards = [
+  {
+    icon: KeyRound,
+    title: "Authenticated access",
+    body: "You sign in with Google, and every request for library data is checked against your signed-in account.",
+  },
+  {
+    icon: UserRound,
+    title: "Private research data",
+    body: "Papers, chats and reports belong to your account. Uploaded files are kept in a per-account folder other users cannot access.",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Owner-scoped retrieval",
+    body: "Search and answers only draw on passages from your own papers, and database rows are restricted per account with row-level security.",
+  },
+  {
+    icon: Quote,
+    title: "Citation-backed answers",
+    body: "Each answer lists the passages it was given and marks which pages it cited, so you can check the source.",
+  },
+];
+
+const walkthrough = [
+  {
+    title: "Library search",
+    body: "Semantic results from your own papers, with the page each match came from.",
+    path: "/search",
+    label: "The ResearchMind Library screen with sample search results",
+    Preview: LibrarySearchPreview,
+  },
+  {
+    title: "Compare studies",
+    body: "Two indexed papers compared side by side.",
+    path: "/compare",
+    label: "The ResearchMind Compare screen comparing two sample papers",
+    Preview: ComparePreview,
+  },
+  {
+    title: "Literature review",
+    body: "A structured review with its citations, ready to export as a PDF.",
+    path: "/reports",
+    label: "The ResearchMind Literature Review screen with a sample report",
+    Preview: ReportPreview,
+  },
 ];
 
 const faqs = [
-  { q: "How is this different from ChatGPT or Perplexity?", a: "ResearchMind only answers from papers you upload. Every claim is grounded in a citation with a page anchor — no open-web hallucinations, no untraceable sources." },
-  { q: "What file formats do you support?", a: "PDF, DOCX, TEX, EPUB, and direct import from arXiv, PubMed, Semantic Scholar, and Zotero." },
-  { q: "Is my research private?", a: "Yes. Libraries are encrypted at rest, never used for training, and can be hosted in EU-only regions for GDPR compliance." },
-  { q: "Can I cite a draft generated by ResearchMind?", a: "Drafts are scaffolds, not final text. Every section preserves source spans so you can verify and rewrite before submission." },
-  { q: "Do you support institutional licenses?", a: "Yes — SSO, SCIM, audit logs, and per-lab seat pooling are available on the Institution plan." },
+  {
+    q: "How is ResearchMind different from ChatGPT or Perplexity?",
+    a: "ResearchMind answers from the papers you upload, not the open web. Each answer is generated from passages retrieved from your library, cites the pages it used, and says so when those passages don't support an answer.",
+  },
+  {
+    q: "What file formats are supported?",
+    a: "PDF. Uploaded PDF papers are indexed for search, questions, comparisons and reports.",
+  },
+  {
+    q: "Is my research private?",
+    a: "Your papers, chats and reports are tied to your signed-in account, and search only retrieves passages from your own library. To search and answer questions, passages from your papers are processed by the third-party embedding and language-model services that power those features.",
+  },
+  {
+    q: "Can I cite generated answers?",
+    a: "Treat an answer as a guide to your sources rather than a source itself. Every answer lists the pages it drew on, so open those pages and cite the original papers.",
+  },
+  {
+    q: "How does search work?",
+    a: "When a paper is indexed, it is split into passages and each passage is turned into a vector embedding. Your query is embedded the same way and matched against passages from your own papers, and the closest matches are shown with their paper and page.",
+  },
 ];
+
+// One content grid for every section. SiteHeader and SiteFooter use the same
+// max-w-6xl container, so all left and right edges line up.
+const container = "mx-auto w-full max-w-6xl px-6";
+const sectionPadding = "py-18 md:py-21";
+
+const eyebrow = "text-xs uppercase tracking-[0.18em] text-primary";
+const sectionTitle =
+  "mt-3 text-balance text-3xl font-medium leading-[1.05] tracking-tight sm:text-4xl md:text-5xl";
+
+// Product and Security cards share identical internals so both sections carry
+// the same visual weight.
+const cardGrid =
+  "grid gap-px overflow-hidden rounded-2xl border border-border bg-border sm:grid-cols-2";
+const card = "bg-surface p-6 md:p-7";
+const cardTitle = "mt-4 text-lg font-medium tracking-tight";
+const cardBody = "mt-2 text-sm leading-relaxed text-muted-foreground";
 
 function Index() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <SiteHeader />
 
-      {/* HERO */}
-      <section className="relative overflow-hidden">
-        <div className="absolute inset-0 grid-paper opacity-60 [mask-image:radial-gradient(ellipse_at_top,black,transparent_70%)]" />
-        <div className="relative mx-auto max-w-[1400px] px-6 pt-20 pb-28 md:pt-28 md:pb-36">
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-            className="mx-auto max-w-3xl text-center"
-          >
-            <div className="mx-auto inline-flex items-center gap-2 rounded-full border border-border bg-surface/60 px-3 py-1 text-xs text-muted-foreground backdrop-blur">
-              <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-              Now in private beta with 14 European research labs
-            </div>
-            <h1 className="mt-6 text-balance text-5xl font-medium leading-[1.02] tracking-tight text-ink md:text-7xl">
-              AI for academic{" "}
-              <span className="italic" style={{ fontFamily: "var(--font-serif)" }}>research</span>.
-            </h1>
-            <p className="mx-auto mt-6 max-w-xl text-balance text-base leading-relaxed text-muted-foreground md:text-lg">
-              Upload papers. Discover insights. Generate literature reviews. Compare studies.
-              Export publication-ready reports — every claim cited, every source verifiable.
-            </p>
-            <div className="mt-9 flex items-center justify-center gap-3">
-              <Button size="lg" className="h-11 px-5 text-[14px]" asChild>
-                <Link to="/dashboard">Start research <ArrowRight className="ml-1 h-4 w-4" /></Link>
-              </Button>
-              <Button size="lg" variant="ghost" className="h-11 px-5 text-[14px]">
-                Watch demo →
-              </Button>
-            </div>
-            <div className="mt-4 text-xs text-muted-foreground">Free for individual researchers · No credit card</div>
-          </motion.div>
-
-          {/* Hero product preview */}
-          <motion.div
-            initial={{ opacity: 0, y: 32 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.9, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
-            className="relative mx-auto mt-16 max-w-5xl"
-          >
-            <div className="rounded-2xl border border-border bg-surface shadow-[0_30px_80px_-20px_rgba(15,23,42,0.18)]">
-              <div className="flex items-center gap-1.5 border-b border-border px-4 py-2.5">
-                <span className="h-2.5 w-2.5 rounded-full bg-muted-foreground/20" />
-                <span className="h-2.5 w-2.5 rounded-full bg-muted-foreground/20" />
-                <span className="h-2.5 w-2.5 rounded-full bg-muted-foreground/20" />
-                <div className="ml-3 flex h-6 flex-1 items-center rounded-md border border-border bg-background px-2.5 text-[11px] text-muted-foreground">
-                  researchmind.ai / library / transformers-in-medical-imaging
-                </div>
-              </div>
-              <HeroPreview />
-            </div>
-            <div className="pointer-events-none absolute -bottom-10 left-1/2 h-32 w-3/4 -translate-x-1/2 rounded-full bg-primary/20 blur-3xl" />
-          </motion.div>
-        </div>
-      </section>
-
-      {/* SOCIAL PROOF */}
-      <section className="border-y border-border/60 bg-surface/40">
-        <div className="mx-auto max-w-[1400px] px-6 py-10">
-          <div className="text-center text-xs uppercase tracking-[0.18em] text-muted-foreground">
-            Trusted by researchers at
-          </div>
-          <div className="mt-6 grid grid-cols-2 gap-x-8 gap-y-4 text-center md:grid-cols-4 lg:grid-cols-8">
-            {logos.map((l) => (
-              <div key={l} className="font-mono text-[12px] tracking-tight text-muted-foreground/80">{l}</div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* WORKFLOW */}
-      <section className="mx-auto max-w-[1400px] px-6 py-28 md:py-36">
-        <div className="grid gap-16 lg:grid-cols-[1fr_2fr]">
-          <div>
-            <div className="text-xs uppercase tracking-[0.18em] text-primary">The workflow</div>
-            <h2 className="mt-3 text-balance text-4xl font-medium leading-[1.05] tracking-tight md:text-5xl">
-              From a stack of PDFs to a defendable review.
-            </h2>
-            <p className="mt-5 max-w-md text-muted-foreground">
-              Five steps. Every claim traceable. No black boxes between you and your sources.
-            </p>
-          </div>
-          <ol className="relative space-y-px">
-            {workflow.map((step, i) => (
-              <motion.li
-                key={step.n}
-                initial={{ opacity: 0, y: 12 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: "-80px" }}
-                transition={{ duration: 0.5, delay: i * 0.05 }}
-                className="group flex items-start gap-8 border-t border-border py-8 first:border-t-0"
-              >
-                <div className="w-10 font-mono text-xs text-muted-foreground">{step.n}</div>
-                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-border bg-surface text-foreground">
-                  <step.icon className="h-4 w-4" strokeWidth={1.75} />
-                </div>
-                <div className="flex-1">
-                  <div className="text-xl font-medium tracking-tight">{step.title}</div>
-                  <p className="mt-2 max-w-lg text-muted-foreground">{step.body}</p>
-                </div>
-              </motion.li>
-            ))}
-          </ol>
-        </div>
-      </section>
-
-      {/* FEATURE SHOWCASE */}
-      <section className="border-t border-border/60 bg-surface/40">
-        <div className="mx-auto max-w-[1400px] px-6 py-28 md:py-36">
-          <div className="max-w-2xl">
-            <div className="text-xs uppercase tracking-[0.18em] text-primary">Capabilities</div>
-            <h2 className="mt-3 text-balance text-4xl font-medium leading-[1.05] tracking-tight md:text-5xl">
-              Built for the slow work of getting it right.
-            </h2>
-          </div>
-          <div className="mt-16 grid gap-px overflow-hidden rounded-2xl border border-border bg-border md:grid-cols-2">
-            {features.map((f) => (
-              <div key={f.title} className="group bg-surface p-8 transition-colors hover:bg-background md:p-10">
-                <f.icon className="h-5 w-5 text-primary" strokeWidth={1.75} />
-                <div className="mt-5 text-lg font-medium tracking-tight">{f.title}</div>
-                <p className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">{f.body}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* INTERACTIVE DEMO */}
-      <section className="mx-auto max-w-[1400px] px-6 py-28 md:py-36">
-        <div className="grid gap-12 lg:grid-cols-2 lg:gap-20">
-          <div>
-            <div className="text-xs uppercase tracking-[0.18em] text-primary">Ask AI</div>
-            <h2 className="mt-3 text-balance text-4xl font-medium leading-[1.05] tracking-tight md:text-5xl">
-              Every answer cites its sources, down to the paragraph.
-            </h2>
-            <p className="mt-5 max-w-md text-muted-foreground">
-              Hover any sentence to reveal the source span. Open a citation to land directly on the page.
-              No untraceable claims slip through.
-            </p>
-            <ul className="mt-8 space-y-3 text-sm">
-              {[
-                "Streaming responses with inline citation anchors",
-                "Expandable source cards with paper previews",
-                "Per-conversation research context sidebar",
-                "Follow-up suggestions tuned to your library",
-              ].map((x) => (
-                <li key={x} className="flex items-start gap-3 text-foreground/85">
-                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" strokeWidth={2.5} />
-                  {x}
-                </li>
-              ))}
-            </ul>
-            <Button variant="ghost" className="mt-8 -ml-3" asChild>
-              <Link to="/ask">Try the Ask AI demo <ArrowRight className="ml-1 h-4 w-4" /></Link>
-            </Button>
-          </div>
-          <AskPreview />
-        </div>
-      </section>
-
-      {/* TESTIMONIALS */}
-      <section className="border-t border-border/60 bg-surface/40">
-        <div className="mx-auto max-w-[1400px] px-6 py-28 md:py-36">
-          <div className="grid gap-px overflow-hidden rounded-2xl border border-border bg-border md:grid-cols-3">
-            {[
-              { q: "It cut three weeks off my systematic review. The citation anchoring is the part nobody else gets right.", n: "Dr. Lena Kovács", r: "Postdoc, Computational Biology · ETH Zürich" },
-              { q: "Finally, a research tool that doesn't fabricate citations. My PhD students actually trust the output.", n: "Prof. Daniel Reyes", r: "Associate Professor, NLP · TU München" },
-              { q: "We replaced three internal tools with ResearchMind. The export quality is genuinely publication-ready.", n: "Marta Bennett", r: "Head of R&D · Helix Therapeutics" },
-            ].map((t) => (
-              <figure key={t.n} className="bg-surface p-8 md:p-10">
-                <Quote className="h-5 w-5 text-primary" />
-                <blockquote className="mt-5 text-[15px] leading-relaxed text-foreground/90">
-                  "{t.q}"
-                </blockquote>
-                <figcaption className="mt-6 text-sm">
-                  <div className="font-medium">{t.n}</div>
-                  <div className="text-muted-foreground">{t.r}</div>
-                </figcaption>
-              </figure>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* FAQ */}
-      <section className="mx-auto max-w-[1400px] px-6 py-28 md:py-36">
-        <div className="grid gap-16 lg:grid-cols-[1fr_2fr]">
-          <div>
-            <div className="text-xs uppercase tracking-[0.18em] text-primary">FAQ</div>
-            <h2 className="mt-3 text-balance text-4xl font-medium leading-[1.05] tracking-tight md:text-5xl">
-              Questions, answered carefully.
-            </h2>
-          </div>
-          <Accordion type="single" collapsible className="w-full">
-            {faqs.map((f, i) => (
-              <AccordionItem key={i} value={`f-${i}`} className="border-border">
-                <AccordionTrigger className="py-6 text-left text-base font-medium tracking-tight hover:no-underline">
-                  {f.q}
-                </AccordionTrigger>
-                <AccordionContent className="pb-6 text-[15px] leading-relaxed text-muted-foreground">
-                  {f.a}
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
-        </div>
-      </section>
-
-      {/* FINAL CTA */}
-      <section className="border-t border-border/60">
-        <div className="mx-auto max-w-[1400px] px-6 py-28 md:py-36">
-          <div className="relative overflow-hidden rounded-3xl border border-border bg-ink p-12 text-center md:p-20">
-            <div className="absolute inset-0 grid-paper opacity-[0.08]" />
-            <div className="relative">
-              <Sparkles className="mx-auto h-6 w-6 text-primary-foreground/60" strokeWidth={1.5} />
-              <h2 className="mx-auto mt-6 max-w-2xl text-balance text-4xl font-medium leading-[1.05] tracking-tight text-background md:text-6xl">
-                Stop reading 80 papers. Start understanding them.
-              </h2>
-              <p className="mx-auto mt-5 max-w-lg text-balance text-muted-foreground/90">
-                Join researchers from ETH, TUM, MIT, and 200+ labs already using ResearchMind.
+      <main>
+        {/* HERO */}
+        <section className="relative overflow-hidden">
+          <div className="absolute inset-0 grid-paper opacity-50 [mask-image:radial-gradient(ellipse_at_top,black,transparent_70%)]" />
+          <div className={`relative ${container} pt-14 pb-18 md:pt-18 md:pb-20`}>
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+              className="mx-auto max-w-3xl text-center"
+            >
+              <h1 className="text-balance text-[2.625rem] font-medium leading-[1.04] tracking-tight text-ink sm:text-5xl md:text-7xl md:leading-[1.02]">
+                Research you can{" "}
+                <span className="italic" style={{ fontFamily: "var(--font-serif)" }}>
+                  verify
+                </span>
+                .
+              </h1>
+              <p className="mx-auto mt-5 max-w-2xl text-balance text-base leading-relaxed text-muted-foreground md:text-lg">
+                {SUMMARY}
               </p>
-              <div className="mt-9 flex items-center justify-center gap-3">
-                <Button size="lg" variant="secondary" className="h-11 px-5" asChild>
-                  <Link to="/dashboard">Start research <ArrowRight className="ml-1 h-4 w-4" /></Link>
+              <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
+                <Button size="lg" className="h-11 px-5 text-[14px]" asChild>
+                  <Link to="/dashboard">
+                    Start researching <ArrowRight className="ml-1 h-4 w-4" />
+                  </Link>
                 </Button>
-                <Button size="lg" variant="ghost" className="h-11 px-5 text-background hover:bg-background/10 hover:text-background">
-                  Talk to research
+                <Button size="lg" variant="ghost" className="h-11 px-5 text-[14px]" asChild>
+                  <a href="#how-it-works">See how it works</a>
+                </Button>
+              </div>
+              <ol
+                aria-label="Product flow"
+                className="mt-6 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 font-mono text-[12px] text-muted-foreground"
+              >
+                {flow.map((step, i) => (
+                  <li key={step} className="flex items-center gap-2">
+                    {i > 0 && (
+                      <ArrowRight aria-hidden className="h-3 w-3 text-muted-foreground/60" />
+                    )}
+                    {step}
+                  </li>
+                ))}
+              </ol>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 24 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.9, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
+              className="mt-10 md:mt-11"
+            >
+              <BrowserFrame
+                path="/ask"
+                label="The ResearchMind Ask AI screen with a sample question, answer and page citations"
+              >
+                <AskWorkspacePreview />
+              </BrowserFrame>
+              <p className="mt-3 text-center text-xs text-muted-foreground">
+                The Ask AI screen, shown with a public sample paper (Vaswani et al., 2017).
+              </p>
+            </motion.div>
+          </div>
+        </section>
+
+        {/* PRODUCT */}
+        <section id="product" className="scroll-mt-16 border-y border-border/60 bg-surface/40">
+          <div className={`${container} ${sectionPadding}`}>
+            <div className="max-w-2xl">
+              <div className={eyebrow}>Product</div>
+              <h2 className={sectionTitle}>One workspace for the papers you rely on.</h2>
+            </div>
+            <div className={`mt-10 ${cardGrid} lg:grid-cols-4`}>
+              {capabilities.map(({ icon: Icon, title, body }) => (
+                <div key={title} className={card}>
+                  <Icon className="h-5 w-5 text-primary" strokeWidth={1.75} />
+                  <h3 className={cardTitle}>{title}</h3>
+                  <p className={cardBody}>{body}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* HOW IT WORKS */}
+        <section id="how-it-works" className="scroll-mt-16">
+          <div className={`${container} ${sectionPadding}`}>
+            <div className="grid gap-10 lg:grid-cols-[1fr_2fr] lg:gap-16">
+              <div>
+                <div className={eyebrow}>How it works</div>
+                <h2 className={sectionTitle}>From PDFs to a report you can check.</h2>
+                <p className="mt-4 max-w-md text-muted-foreground">
+                  Five steps. Answers and reports point back to the pages they draw on.
+                </p>
+              </div>
+              <ol className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface">
+                {steps.map(({ n, icon: Icon, title, body }) => (
+                  <li
+                    key={n}
+                    className="grid grid-cols-[1.75rem_2.25rem_minmax(0,1fr)] items-center gap-x-4 px-5 py-4.5 md:gap-x-5 md:px-6"
+                  >
+                    <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                      {n}
+                    </span>
+                    <span className="grid h-9 w-9 place-items-center rounded-lg border border-border bg-background">
+                      <Icon className="h-4 w-4" strokeWidth={1.75} />
+                    </span>
+                    <div>
+                      <h3 className="text-base font-medium tracking-tight">{title}</h3>
+                      <p className="mt-0.5 text-sm text-muted-foreground">{body}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </div>
+        </section>
+
+        {/* WALKTHROUGH */}
+        <section id="walkthrough" className="scroll-mt-16 border-y border-border/60 bg-surface/40">
+          <div className={`${container} ${sectionPadding}`}>
+            <div className="max-w-2xl">
+              <div className={eyebrow}>Research workspace</div>
+              <h2 className={sectionTitle}>The screens you work in.</h2>
+              <p className="mt-4 text-muted-foreground">
+                Library search, study comparison and literature reviews as they appear after you
+                sign in — shown here with two public sample papers.
+              </p>
+            </div>
+            {/* Frames stretch to the tallest preview so the captions line up. */}
+            <div className="mt-10 grid gap-8 lg:grid-cols-3 lg:gap-6">
+              {walkthrough.map(({ title, body, path, label, Preview }) => (
+                <div key={title} className="grid grid-rows-[1fr_auto]">
+                  <BrowserFrame path={path} label={label} className="h-full">
+                    <Preview />
+                  </BrowserFrame>
+                  <div>
+                    <h3 className="mt-4 text-base font-medium tracking-tight">{title}</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">{body}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* SECURITY */}
+        <section id="security" className="scroll-mt-16">
+          <div className={`${container} ${sectionPadding}`}>
+            <div className="grid gap-10 lg:grid-cols-[1fr_2fr] lg:gap-16">
+              <div>
+                <div className={eyebrow}>Security</div>
+                <h2 className={sectionTitle}>Your library stays yours.</h2>
+                <p className="mt-4 max-w-md text-muted-foreground">
+                  How access to your research is controlled in the application today.
+                </p>
+              </div>
+              <div className={cardGrid}>
+                {safeguards.map(({ icon: Icon, title, body }) => (
+                  <div key={title} className={card}>
+                    <Icon className="h-5 w-5 text-primary" strokeWidth={1.75} />
+                    <h3 className={cardTitle}>{title}</h3>
+                    <p className={cardBody}>{body}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* FAQ */}
+        <section id="faq" className="scroll-mt-16 border-t border-border/60 bg-surface/40">
+          <div className={`${container} ${sectionPadding}`}>
+            <div className="grid gap-10 lg:grid-cols-[1fr_2fr] lg:gap-16">
+              <div>
+                <div className={eyebrow}>FAQ</div>
+                <h2 className={sectionTitle}>Common questions.</h2>
+              </div>
+              <Accordion type="single" collapsible className="w-full">
+                {faqs.map((f, i) => (
+                  <AccordionItem key={f.q} value={`faq-${i}`} className="border-border">
+                    <AccordionTrigger className="py-4 text-left text-base font-medium tracking-tight hover:no-underline">
+                      {f.q}
+                    </AccordionTrigger>
+                    <AccordionContent className="pb-4 text-[15px] leading-relaxed text-muted-foreground">
+                      {f.a}
+                    </AccordionContent>
+                  </AccordionItem>
+                ))}
+              </Accordion>
+            </div>
+          </div>
+        </section>
+
+        {/* FINAL CTA */}
+        <section>
+          <div className={`${container} py-16 md:py-18`}>
+            <div className="relative overflow-hidden rounded-3xl border border-border bg-ink px-6 py-11 text-center sm:px-10 md:px-16 md:py-14">
+              <div className="absolute inset-0 grid-paper opacity-[0.08]" />
+              <div className="relative">
+                <h2 className="mx-auto max-w-2xl text-balance text-3xl font-medium leading-[1.05] tracking-tight text-background sm:text-4xl md:text-5xl">
+                  Start with your papers.
+                </h2>
+                <p className="mx-auto mt-4 max-w-lg text-balance text-background/75">
+                  Sign in with Google, upload a PDF, and ask your first question with page-level
+                  citations.
+                </p>
+                <Button size="lg" variant="secondary" className="mt-7 h-11 px-5" asChild>
+                  <Link to="/dashboard">
+                    Start researching <ArrowRight className="ml-1 h-4 w-4" />
+                  </Link>
                 </Button>
               </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </main>
 
       <SiteFooter />
-    </div>
-  );
-}
-
-function HeroPreview() {
-  return (
-    <div className="grid grid-cols-[200px_1fr_240px] divide-x divide-border">
-      {/* sidebar */}
-      <div className="hidden p-3 text-[12px] md:block">
-        <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Libraries</div>
-        <ul className="mt-2 space-y-px">
-          {["Transformers in MRI", "RLHF survey", "Diffusion priors", "PhD chapter 3"].map((x, i) => (
-            <li key={x} className={`rounded px-2 py-1.5 ${i === 0 ? "bg-muted text-foreground" : "text-muted-foreground"}`}>{x}</li>
-          ))}
-        </ul>
-        <div className="mt-5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Conversations</div>
-        <ul className="mt-2 space-y-px text-muted-foreground">
-          <li className="rounded px-2 py-1.5">Compare ViT vs CNN…</li>
-          <li className="rounded px-2 py-1.5">Datasets for retinal…</li>
-        </ul>
-      </div>
-      {/* main */}
-      <div className="p-6">
-        <div className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">Literature review · draft</div>
-        <h3 className="mt-2 text-[22px] font-medium leading-tight tracking-tight">
-          Vision Transformers in Medical Imaging: a structured review of 47 studies
-        </h3>
-        <div className="mt-4 grid grid-cols-3 gap-3 text-[11px]">
-          {[
-            ["47", "Papers cited"],
-            ["12", "Datasets"],
-            ["3.2k", "Source spans"],
-          ].map(([n, l]) => (
-            <div key={l} className="rounded-lg border border-border bg-background/60 p-3">
-              <div className="font-mono text-base text-foreground">{n}</div>
-              <div className="text-muted-foreground">{l}</div>
-            </div>
-          ))}
-        </div>
-        <div className="mt-5 space-y-2 text-[13px] leading-relaxed text-foreground/85">
-          <p>
-            Across the 47 reviewed studies, ViT-based architectures matched or exceeded CNN baselines on
-            classification of retinal pathologies
-            <sup className="ml-0.5 rounded-sm bg-primary/15 px-1 text-[10px] font-medium text-primary">[12]</sup>
-            <sup className="ml-0.5 rounded-sm bg-primary/15 px-1 text-[10px] font-medium text-primary">[28]</sup>,
-            while remaining sensitive to pre-training scale.
-          </p>
-          <p className="text-muted-foreground">
-            However, performance gains diminished on smaller annotated corpora — a pattern consistent with
-            findings on cross-domain transfer
-            <sup className="ml-0.5 rounded-sm bg-primary/15 px-1 text-[10px] font-medium text-primary">[34]</sup>.
-          </p>
-        </div>
-      </div>
-      {/* citations */}
-      <div className="hidden p-4 lg:block">
-        <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Sources</div>
-        <div className="mt-3 space-y-2">
-          {[
-            { n: "12", t: "Dosovitskiy et al.", j: "ICLR 2021 · cited 18,420" },
-            { n: "28", t: "Chen, Wu, Heidari", j: "Med. Image Anal. 2023" },
-            { n: "34", t: "Park & Lee", j: "MICCAI 2024" },
-          ].map((s) => (
-            <div key={s.n} className="rounded-lg border border-border bg-background/60 p-3">
-              <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-                <span className="font-mono">[{s.n}]</span><span>p. 4 §2.3</span>
-              </div>
-              <div className="mt-1 text-[12px] font-medium leading-snug">{s.t}</div>
-              <div className="text-[10px] text-muted-foreground">{s.j}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AskPreview() {
-  return (
-    <div className="rounded-2xl border border-border bg-surface p-5 shadow-[0_20px_60px_-20px_rgba(15,23,42,0.12)]">
-      <div className="rounded-xl border border-border bg-background/60 p-4">
-        <div className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">You asked</div>
-        <div className="mt-1 text-[15px] leading-snug">
-          How does masked autoencoding compare to contrastive pretraining for medical images?
-        </div>
-      </div>
-      <div className="mt-4 px-1">
-        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-          <span className="grid h-5 w-5 place-items-center rounded-md bg-primary text-primary-foreground">
-            <Sparkles className="h-3 w-3" />
-          </span>
-          ResearchMind · grounded in 6 papers
-        </div>
-        <p className="mt-3 text-[14px] leading-relaxed text-foreground/90">
-          Masked autoencoding (MAE) tends to outperform contrastive methods on segmentation when labelled data is
-          scarce
-          <sup className="ml-0.5 rounded-sm bg-primary/15 px-1 text-[10px] font-medium text-primary">[3]</sup>,
-          largely because the reconstruction objective preserves fine-grained spatial detail. Contrastive
-          pretraining
-          <sup className="ml-0.5 rounded-sm bg-primary/15 px-1 text-[10px] font-medium text-primary">[5]</sup>
-          remains stronger for classification of well-curated cohorts.
-        </p>
-      </div>
-      <div className="mt-4 space-y-2">
-        {[
-          { n: "3", t: "MAE for chest CT pretraining", a: "Liu, Schultz · CVPR 2024" },
-          { n: "5", t: "SimCLR on histopathology benchmarks", a: "Vasquez et al. · Nature Methods 2023" },
-        ].map((c) => (
-          <div key={c.n} className="flex items-center justify-between rounded-lg border border-border bg-background/60 p-3 text-[12px]">
-            <div>
-              <span className="font-mono text-[10px] text-muted-foreground">[{c.n}]</span>
-              <span className="ml-2 font-medium">{c.t}</span>
-              <div className="text-[11px] text-muted-foreground">{c.a}</div>
-            </div>
-            <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
-          </div>
-        ))}
-      </div>
-      <div className="mt-4 flex flex-wrap gap-2 text-[12px]">
-        {["Show benchmark numbers", "Limit to 2023+", "Compare on small datasets"].map((s) => (
-          <button key={s} className="rounded-full border border-border bg-background/60 px-3 py-1 text-muted-foreground hover:text-foreground">
-            {s}
-          </button>
-        ))}
-      </div>
     </div>
   );
 }

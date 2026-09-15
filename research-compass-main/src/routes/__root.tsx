@@ -78,23 +78,23 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "ResearchMind AI — AI for academic research" },
+      { title: "ResearchMind Lab" },
       {
         name: "description",
-        content:
-          "Upload papers, build a private knowledge base, ask grounded questions, and generate publication-ready literature reviews.",
+        content: "AI-assisted research grounded in the papers you provide.",
       },
-      { name: "author", content: "ResearchMind" },
-      { property: "og:title", content: "ResearchMind AI" },
+      { name: "author", content: "ResearchMind Lab" },
+      { property: "og:title", content: "ResearchMind Lab" },
       {
         property: "og:description",
-        content: "AI-native research workspace for serious academics and labs.",
+        content: "AI-assisted research grounded in the papers you provide.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { name: "twitter:site", content: "@researchmind" },
     ],
     links: [
+      { rel: "icon", href: "/favicon.ico", sizes: "32x32" },
+      { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
       {
         rel: "stylesheet",
         href: appCss,
