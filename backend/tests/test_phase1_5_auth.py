@@ -6,6 +6,8 @@ Supabase's, and exercises app.core.auth's verification logic directly
 against them. This proves the verification logic itself is correct
 independent of whether a real JWKS endpoint exists yet.
 """
+import base64
+import json
 import os
 import sys
 import time
@@ -14,6 +16,8 @@ from unittest.mock import MagicMock, patch
 
 import jwt
 from cryptography.hazmat.primitives.asymmetric import rsa
+from fastapi import Depends, FastAPI, HTTPException
+from fastapi.testclient import TestClient
 
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BACKEND_DIR not in sys.path:
@@ -21,8 +25,10 @@ if BACKEND_DIR not in sys.path:
 
 from app.core import auth as auth_module
 
+TEST_SUPABASE_URL = "https://test-project.supabase.co"
 TEST_ISSUER = "https://test-project.supabase.co/auth/v1"
 TEST_OWNER_ID = "11111111-1111-1111-1111-111111111111"
+TEST_KID = "test-kid"
 
 
 def _make_keypair():
@@ -153,6 +159,123 @@ class TestGetCurrentIdentityDependency(unittest.TestCase):
             with self.assertRaises(Exception) as ctx:
                 auth_module.get_current_owner_id(req)
             self.assertEqual(ctx.exception.status_code, 500)
+
+
+def _b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+
+_VALID_HEADER = _b64url(json.dumps({"alg": "RS256", "typ": "JWT", "kid": TEST_KID}).encode())
+
+
+class TestMalformedBearerTokens(unittest.TestCase):
+    """Regression: a malformed bearer token escaped get_signing_key_from_jwt()
+    as an uncaught jwt.DecodeError and became an HTTP 500.
+
+    These tests run the REAL PyJWKClient, replacing only its JWKS fetch, so
+    the token is genuinely parsed. The dependency tests above mock the whole
+    client and therefore never reached the code path that failed."""
+
+    MALFORMED_TOKENS = {
+        "no segments": "not-a-real-token",
+        "two segments": "abc.def",
+        "garbage segments": "abc.def.ghi",
+        "empty segments": "..",
+        "non-base64 segments": "%%%.%%%.%%%",
+        "header is a JSON array": _b64url(b"[1,2]") + "." + _b64url(b"{}") + ".sig",
+        "payload is not JSON": _VALID_HEADER + "." + _b64url(b"not json") + ".sig",
+        "payload is not base64": _VALID_HEADER + ".!!!!.sig",
+    }
+
+    @classmethod
+    def setUpClass(cls):
+        cls.private_key, cls.public_key = _make_keypair()
+        jwk = jwt.algorithms.RSAAlgorithm.to_jwk(cls.public_key, as_dict=True)
+        cls.jwks = {"keys": [dict(jwk, kid=TEST_KID, use="sig", alg="RS256")]}
+
+        app = FastAPI()
+
+        @app.get("/protected")
+        def protected(owner_id: str = Depends(auth_module.get_current_owner_id)):
+            return {"owner_id": owner_id}
+
+        cls.client = TestClient(app, raise_server_exceptions=False)
+
+    def setUp(self):
+        env = patch.dict(os.environ, {"SUPABASE_URL": TEST_SUPABASE_URL})
+        env.start()
+        self.addCleanup(env.stop)
+
+        real_client = jwt.PyJWKClient(f"{TEST_SUPABASE_URL}/auth/v1/.well-known/jwks.json")
+        jwks_client = patch.object(auth_module, "_get_jwks_client", return_value=real_client)
+        jwks_client.start()
+        self.addCleanup(jwks_client.stop)
+
+        # No network: the JWKS document is served from here.
+        fetch = patch.object(jwt.PyJWKClient, "fetch_data", return_value=self.jwks)
+        self.fetch_mock = fetch.start()
+        self.addCleanup(fetch.stop)
+
+    def _signed_token(self, key=None, kid=TEST_KID):
+        now = int(time.time())
+        payload = {"aud": "authenticated", "iss": TEST_ISSUER, "sub": TEST_OWNER_ID,
+                   "iat": now, "exp": now + 3600}
+        return jwt.encode(payload, key or self.private_key, algorithm="RS256", headers={"kid": kid})
+
+    def _get(self, authorization=None):
+        headers = {"Authorization": authorization} if authorization is not None else {}
+        return self.client.get("/protected", headers=headers)
+
+    def test_malformed_token_returns_401_never_500(self):
+        self.fetch_mock.side_effect = AssertionError("JWKS must not be fetched for a malformed token")
+        for name, token in self.MALFORMED_TOKENS.items():
+            with self.subTest(name):
+                response = self._get(f"Bearer {token}")
+                self.assertEqual(response.status_code, 401)
+                self.assertEqual(response.json(), {"detail": "Unable to verify token"})
+                self.assertNotIn(token, response.text)
+        self.fetch_mock.assert_not_called()
+
+    def test_structurally_invalid_jwt_raises_http_401_not_decode_error(self):
+        self.fetch_mock.side_effect = AssertionError("JWKS must not be fetched for a malformed token")
+        request = MagicMock()
+        request.headers = {"Authorization": "Bearer abc.def.ghi"}
+        with self.assertRaises(HTTPException) as ctx:
+            auth_module.get_current_owner_id(request)
+        self.assertEqual(ctx.exception.status_code, 401)
+
+    def test_valid_token_still_resolves_owner_through_real_jwks_client(self):
+        response = self._get(f"Bearer {self._signed_token()}")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"owner_id": TEST_OWNER_ID})
+        self.fetch_mock.assert_called()
+
+    def test_forged_signature_is_still_rejected(self):
+        attacker_key, _ = _make_keypair()
+        response = self._get(f"Bearer {self._signed_token(key=attacker_key)}")
+        self.assertEqual(response.status_code, 401)
+        self.assertTrue(response.json()["detail"].startswith("Invalid token"))
+
+    def test_unknown_signing_key_is_401_without_echoing_the_header(self):
+        kid = "attacker-chosen-kid"
+        response = self._get(f"Bearer {self._signed_token(kid=kid)}")
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json(), {"detail": "Unable to verify token"})
+        self.assertNotIn(kid, response.text)
+
+    def test_jwks_without_usable_keys_fails_closed_with_401(self):
+        self.fetch_mock.return_value = {"keys": []}
+        response = self._get(f"Bearer {self._signed_token()}")
+        self.assertEqual(response.status_code, 401)
+
+    def test_missing_or_non_bearer_authorization_still_401(self):
+        self.fetch_mock.side_effect = AssertionError("JWKS must not be fetched without a bearer token")
+        for name, header in (("missing", None), ("other scheme", "Token abc"),
+                             ("lowercase bearer", "bearer abc.def.ghi")):
+            with self.subTest(name):
+                response = self._get(header)
+                self.assertEqual(response.status_code, 401)
+                self.assertEqual(response.json(), {"detail": "Missing or malformed Authorization header"})
 
 
 if __name__ == "__main__":

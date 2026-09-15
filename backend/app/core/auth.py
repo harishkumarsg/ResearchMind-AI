@@ -63,8 +63,12 @@ def verify_jwt_and_get_owner_id(token: str) -> str:
     supabase_url = _get_supabase_url()
     try:
         signing_key = _get_jwks_client().get_signing_key_from_jwt(token)
-    except jwt.PyJWKClientError as e:
-        raise HTTPException(status_code=401, detail=f"Unable to verify token: {e}")
+    except jwt.PyJWTError:
+        # PyJWKClientError is only one branch of PyJWTError: a malformed token
+        # raises DecodeError and an unusable key set raises PyJWKSetError, and
+        # both used to escape as a 500. The exception text is deliberately not
+        # returned — it can quote bytes or header values from the token itself.
+        raise HTTPException(status_code=401, detail="Unable to verify token")
 
     issuer = f"{supabase_url}/auth/v1"
     return _verify_token_with_key(token, signing_key.key, issuer)
