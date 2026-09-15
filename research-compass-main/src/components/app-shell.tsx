@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   FileText,
   GitCompare,
@@ -28,6 +28,23 @@ const sidebarNav = [
   { to: "/compare", label: "Compare", icon: GitCompare },
 ];
 
+// Shared with the Library page so the sidebar control can focus its input.
+export const LIBRARY_SEARCH_INPUT_ID = "library-search-input";
+
+function isMacPlatform() {
+  if (typeof navigator === "undefined") return false;
+  const nav = navigator as Navigator & { userAgentData?: { platform?: string } };
+  return /mac|iphone|ipad|ipod/i.test(nav.userAgentData?.platform || nav.platform || "");
+}
+
+// Cmd+K on macOS, Ctrl+K elsewhere. Shifted/Alt variants are left alone
+// (e.g. Ctrl+Shift+K opens the Firefox console). `key` can be missing on
+// synthetic keydown events such as Chrome autofill.
+function isLibrarySearchShortcut(event: KeyboardEvent, isMac: boolean) {
+  const modifier = isMac ? event.metaKey : event.ctrlKey;
+  return modifier && !event.altKey && !event.shiftKey && event.key?.toLowerCase() === "k";
+}
+
 export function AppShell({
   children,
   title,
@@ -40,6 +57,7 @@ export function AppShell({
   actions?: ReactNode;
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const [deletingPaper, setDeletingPaper] = useState<string | null>(null);
   const { session, user, isLoading: authLoading, signInWithGoogle, signOut } = useAuth();
@@ -53,6 +71,31 @@ export function AppShell({
     // would throw AuthenticationRequiredError and burn retries.
     enabled: !!userId,
   });
+
+  // navigator is unavailable during SSR, so render the non-Mac hint first
+  // and switch after mount to avoid a hydration mismatch.
+  const [isMac, setIsMac] = useState(false);
+  useEffect(() => {
+    setIsMac(isMacPlatform());
+  }, []);
+
+  const openLibrarySearch = useCallback(() => {
+    if (pathname === "/search") {
+      document.getElementById(LIBRARY_SEARCH_INPUT_ID)?.focus();
+      return;
+    }
+    void navigate({ to: "/search" });
+  }, [pathname, navigate]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!isLibrarySearchShortcut(event, isMac)) return;
+      event.preventDefault();
+      openLibrarySearch();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isMac, openLibrarySearch]);
 
   const handleDeletePaper = async (e: React.MouseEvent, paperName: string) => {
     e.preventDefault();
@@ -93,11 +136,16 @@ export function AppShell({
             ResearchMind
           </Link>
           <div className="px-3 pt-4">
-            <button className="flex w-full items-center justify-between rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-muted-foreground hover:text-foreground">
+            <button
+              type="button"
+              onClick={openLibrarySearch}
+              aria-keyshortcuts={isMac ? "Meta+K" : "Control+K"}
+              className="flex w-full items-center justify-between rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-muted-foreground hover:text-foreground"
+            >
               <span className="flex items-center gap-2">
                 <Search className="h-3.5 w-3.5" /> Search…
               </span>
-              <span className="font-mono text-[10px]">⌘K</span>
+              <span className="font-mono text-[10px]">{isMac ? "⌘K" : "Ctrl K"}</span>
             </button>
           </div>
           <nav className="mt-3 flex-1 overflow-y-auto space-y-px px-3">

@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { AppShell } from "@/components/app-shell";
+import { AppShell, LIBRARY_SEARCH_INPUT_ID } from "@/components/app-shell";
 import {
   Bookmark,
   FileText,
@@ -48,6 +48,8 @@ function SearchPage() {
           <SearchIcon className="h-4 w-4 text-muted-foreground" />
 
           <input
+            id={LIBRARY_SEARCH_INPUT_ID}
+            autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="flex-1 bg-transparent py-3 text-[15px] outline-none placeholder:text-muted-foreground"
