@@ -105,11 +105,17 @@ describe("Public homepage", () => {
     ]);
 
     const footer = within(screen.getByRole("navigation", { name: "Footer" })).getAllByRole("link");
-    for (const link of [...header, ...footer]) {
-      const href = link.getAttribute("href") ?? "";
-      expect(href).toMatch(/^#/);
-      expect(document.getElementById(href.slice(1))).not.toBeNull();
+    const hrefs = [...header, ...footer].map((link) => link.getAttribute("href") ?? "");
+
+    // Section links are absolute ("/#faq") so the shared header and footer also
+    // work on /privacy, /terms and /contact. Each must still hit a real section.
+    for (const href of hrefs.filter((h) => h.includes("#"))) {
+      expect(href).toMatch(/^\/#/);
+      expect(document.getElementById(href.slice(2))).not.toBeNull();
     }
+
+    // The legal pages exist now, so the footer links to them.
+    expect(hrefs).toEqual(expect.arrayContaining(["/privacy", "/terms", "/contact"]));
   });
 
   it("contains no unsupported social proof, adoption, location or capability claims", () => {

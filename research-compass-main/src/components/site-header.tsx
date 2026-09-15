@@ -3,12 +3,14 @@ import { BrandMark } from "@/components/brand-mark";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth-context";
 
-// Sections of the public homepage, the only page that renders this header.
+// Sections of the public homepage. Paths are absolute ("/#product", not
+// "#product") because the legal pages render this same header, where a bare
+// fragment would point at a section that is not on the page.
 const nav = [
-  { href: "#product", label: "Product" },
-  { href: "#how-it-works", label: "How it works" },
-  { href: "#security", label: "Security" },
-  { href: "#walkthrough", label: "Research" },
+  { href: "/#product", label: "Product" },
+  { href: "/#how-it-works", label: "How it works" },
+  { href: "/#security", label: "Security" },
+  { href: "/#walkthrough", label: "Research" },
 ];
 
 export function SiteHeader() {

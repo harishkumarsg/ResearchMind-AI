@@ -1,12 +1,19 @@
+import { Link } from "@tanstack/react-router";
 import { BrandMark } from "@/components/brand-mark";
 
-// Sections of the public homepage. Privacy, Terms and Contact are not linked:
-// those pages do not exist yet, and a footer link must never lead nowhere.
-const links = [
-  { href: "#product", label: "Product" },
-  { href: "#how-it-works", label: "How it works" },
-  { href: "#security", label: "Security" },
-  { href: "#faq", label: "FAQ" },
+// Sections of the public homepage, linked absolutely so the footer works
+// from the legal pages too.
+const sectionLinks = [
+  { href: "/#product", label: "Product" },
+  { href: "/#how-it-works", label: "How it works" },
+  { href: "/#security", label: "Security" },
+  { href: "/#faq", label: "FAQ" },
+];
+
+const legalLinks = [
+  { href: "/privacy", label: "Privacy Policy" },
+  { href: "/terms", label: "Terms of Service" },
+  { href: "/contact", label: "Contact" },
 ];
 
 export function SiteFooter() {
@@ -24,13 +31,22 @@ export function SiteFooter() {
             AI-assisted research grounded in the papers you provide.
           </p>
         </div>
-        <nav aria-label="Footer">
+        <nav aria-label="Footer" className="flex flex-col gap-3 md:items-end">
           <ul className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
-            {links.map((link) => (
+            {sectionLinks.map((link) => (
               <li key={link.href}>
                 <a className="text-foreground/80 hover:text-foreground" href={link.href}>
                   {link.label}
                 </a>
+              </li>
+            ))}
+          </ul>
+          <ul className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+            {legalLinks.map((link) => (
+              <li key={link.href}>
+                <Link className="text-muted-foreground hover:text-foreground" to={link.href}>
+                  {link.label}
+                </Link>
               </li>
             ))}
           </ul>
