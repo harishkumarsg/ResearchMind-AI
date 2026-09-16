@@ -9,7 +9,9 @@ from groq import Groq
 from dotenv import load_dotenv
 from qdrant_client.models import FieldCondition, Filter, MatchValue
 
-from app.core.auth import get_current_owner_id
+from app.core.limits import AI_GENERATION, UsageLimitError
+from app.core.quota import charge as charge_quota
+from app.core.usage_guard import precheck_ai_generation
 from app.rag.embedder import encode_query
 from app.rag.vector_store import COLLECTION_NAME, client
 from app.rag.reranker import rerank_results
@@ -88,7 +90,7 @@ def generate_sse_event(data: dict) -> str:
 
 
 @router.get("/ask-stream")
-def ask_stream(question: str, owner_id: str = Depends(get_current_owner_id)):
+def ask_stream(question: str, owner_id: str = Depends(precheck_ai_generation)):
 
     def stream():
 
@@ -124,6 +126,24 @@ def ask_stream(question: str, owner_id: str = Depends(get_current_owner_id)):
 
             # Emit: searching
             yield generate_sse_event({"type": "status", "text": "Searching papers…"})
+
+            # Charge the daily allowance HERE, not in the dependency: this
+            # is the last moment before the first provider call, so a
+            # database failure in load_chat_state/persist_user_turn above
+            # costs the user nothing. The dependency already rejected the
+            # ordinary "out of quota" case with a real HTTP 429; reaching
+            # this point and failing means a concurrent request took the
+            # last unit, and the response has already started streaming,
+            # so the only honest channel left is an SSE error frame.
+            try:
+                charge_quota(owner_id, AI_GENERATION)
+            except UsageLimitError as limit_error:
+                yield generate_sse_event({
+                    "type": "error",
+                    "code": limit_error.code,
+                    "text": limit_error.message,
+                })
+                return
 
             query_vector = encode_query(search_query)
 

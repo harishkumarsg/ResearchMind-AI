@@ -6,7 +6,13 @@ from fastapi import APIRouter, Depends
 from qdrant_client.models import FieldCondition, Filter, MatchValue, PointStruct
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_current_owner_id
+from typing import Callable, Optional
+
+from app.core import limits as limits_config
+from app.core.limits import QuotaExceeded
+from app.core.indexing_slot import indexing_slot
+from app.core.quota import charge as charge_quota
+from app.core.usage_guard import precheck_index_run
 from app.db.models import Paper
 from app.db.session import get_db_session
 from app.rag.chunker import create_chunks
@@ -84,7 +90,10 @@ def _build_chunks_for_paper(paper: Paper, pages: list) -> list:
     return all_chunks
 
 
-def index_one_paper(paper: Paper) -> int:
+def index_one_paper(
+    paper: Paper,
+    before_provider_work: Optional[Callable[[], None]] = None,
+) -> int:
     """Fetches this paper's PDF from persistent Storage (never from
     Render's local disk), extracts/chunks/embeds it, and upserts — as a
     single all-or-nothing operation per paper. Returns points written.
@@ -111,7 +120,24 @@ def index_one_paper(paper: Paper) -> int:
     if not pages:
         raise ValueError("Unable to extract any pages from this PDF")
 
+    # Cost cap D, applied once the real page count is known and BEFORE any
+    # embedding call. Raised as ValueError so it travels the existing
+    # per-paper failure path: this paper is marked failed with a readable
+    # reason, other pending papers still index, and neither Voyage nor
+    # Qdrant is touched for this one.
+    max_pages = limits_config.max_pages_per_paper()
+    if len(pages) > max_pages:
+        raise ValueError(
+            f"Document too large to index: {len(pages)} pages (limit {max_pages})"
+        )
+
     all_chunks = _build_chunks_for_paper(paper, pages)
+
+    max_chunks = limits_config.max_chunks_per_paper()
+    if len(all_chunks) > max_chunks:
+        raise ValueError(
+            f"Document too large to index: {len(all_chunks)} passages (limit {max_chunks})"
+        )
 
     # All-or-nothing: the WHOLE paper's embeddings are computed before
     # Qdrant is touched at all, so a Voyage/embedding failure — even one
@@ -121,6 +147,14 @@ def index_one_paper(paper: Paper) -> int:
     # batching, request pacing, and rate-limit retry/backoff internally;
     # this call site does not need its own batching loop.
     texts = [item["text"] for item in all_chunks]
+
+    # The last point at which nothing has been spent: the PDF is fetched,
+    # the page and chunk caps have passed, and the very next call is the
+    # embedding provider. A paper rejected by the caps above therefore
+    # costs no quota, because this hook is never reached for it.
+    if before_provider_work is not None:
+        before_provider_work()
+
     embeddings = create_embeddings(texts)
     points = [
         PointStruct(
@@ -143,7 +177,7 @@ def index_one_paper(paper: Paper) -> int:
 
 @router.post("/index-document")
 def index_document(
-    owner_id: str = Depends(get_current_owner_id),
+    owner_id: str = Depends(precheck_index_run),
     db: Session = Depends(get_db_session),
 ):
     """Indexes only the CALLING user's own uploaded-but-not-yet-indexed
@@ -160,21 +194,87 @@ def index_document(
     indexed_ids = []
     failed = []
 
-    for paper in pending:
-        paper.status = "indexing"
-        db.commit()
+    # Nothing pending: no slot is taken and no quota is spent, because no
+    # indexing run happens. Returning the same shape as before keeps the
+    # "already indexed" path on the frontend unchanged.
+    if not pending:
+        return {
+            "status": "success",
+            "papers_found": 0,
+            "papers_indexed": 0,
+            "papers_failed": 0,
+            "indexed": indexed_ids,
+            "failed": failed,
+        }
 
-        try:
-            points_written = index_one_paper(paper)
-            paper.status = "indexed"
-            paper.status_detail = None
+    # QUOTA MODEL: one INDEX_RUN unit per PAPER actually accepted for
+    # provider work — not one per HTTP request. Cost scales with papers
+    # embedded, so the unit must too, otherwise a single request could
+    # index an unbounded batch for one unit.
+    #
+    # The charge sits inside index_one_paper, immediately before the first
+    # embedding call, so a paper rejected by the page/chunk caps or by a
+    # failed PDF fetch consumes nothing.
+    #
+    # Slot BEFORE quota: a caller turned away because someone else is
+    # indexing has consumed nothing, so being told "busy" never costs a
+    # unit of the daily allowance.
+    with indexing_slot():
+        skipped = []
+        quota_error = None
+
+        for paper in pending:
+            # Once the allowance runs out mid-batch, the remaining papers
+            # are left exactly as they were — status "uploaded", so the
+            # next run picks them up — rather than marked failed, which
+            # would strand them outside the pending query forever.
+            if quota_error is not None:
+                skipped.append(
+                    {
+                        "paper_id": str(paper.id),
+                        "reason": "Daily indexing limit reached — try again tomorrow.",
+                    }
+                )
+                continue
+
+            paper.status = "indexing"
             db.commit()
-            indexed_ids.append({"paper_id": str(paper.id), "points": points_written})
-        except Exception as e:
-            paper.status = "failed"
-            paper.status_detail = str(e)
-            db.commit()
-            failed.append({"paper_id": str(paper.id), "error": str(e)})
+
+            try:
+                points_written = index_one_paper(
+                    paper,
+                    before_provider_work=lambda: charge_quota(
+                        owner_id, limits_config.INDEX_RUN
+                    ),
+                )
+                paper.status = "indexed"
+                paper.status_detail = None
+                db.commit()
+                indexed_ids.append({"paper_id": str(paper.id), "points": points_written})
+            except QuotaExceeded as exc:
+                # Raised by the hook above, so no embedding was requested
+                # and nothing was written to Qdrant for this paper.
+                paper.status = "uploaded"
+                paper.status_detail = None
+                db.commit()
+                quota_error = exc
+                skipped.append(
+                    {
+                        "paper_id": str(paper.id),
+                        "reason": "Daily indexing limit reached — try again tomorrow.",
+                    }
+                )
+            except Exception as e:
+                paper.status = "failed"
+                paper.status_detail = str(e)
+                db.commit()
+                failed.append({"paper_id": str(paper.id), "error": str(e)})
+
+        # Nothing at all got through: report it as the limit rejection it
+        # is, rather than a "success" with zero papers, which the frontend
+        # would read as "already indexed".
+        if quota_error is not None and not indexed_ids and not failed:
+            raise quota_error
 
     return {
         "status": "success",
@@ -183,4 +283,7 @@ def index_document(
         "papers_failed": len(failed),
         "indexed": indexed_ids,
         "failed": failed,
+        # Additive field: papers left pending because the daily indexing
+        # allowance ran out partway through this batch.
+        "skipped": skipped,
     }

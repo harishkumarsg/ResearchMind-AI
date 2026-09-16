@@ -662,9 +662,13 @@ class TestIndexingOwnership(OwnershipTestBase):
         self._seed_paper(USER_A, "Good_Paper")
         self._seed_paper(USER_A, "Bad_Paper")
 
-        def side_effect(paper):
+        # index_one_paper now takes an optional before_provider_work hook
+        # (E1 per-paper metering), so this double must accept it too.
+        def side_effect(paper, before_provider_work=None):
             if paper.title == "Bad_Paper":
                 raise ValueError("Voyage API failure")
+            if before_provider_work is not None:
+                before_provider_work()
             return 3
 
         with patch("app.api.index_document.index_one_paper", side_effect=side_effect):

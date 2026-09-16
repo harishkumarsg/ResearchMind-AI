@@ -1,7 +1,9 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.core.cors import get_allowed_origins
+from app.core.limits import UsageLimitError
 
 # ====================================
 # Core APIs
@@ -86,6 +88,31 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ====================================
+# Usage limits
+# ====================================
+
+
+@app.exception_handler(UsageLimitError)
+def usage_limit_handler(request: Request, exc: UsageLimitError) -> JSONResponse:
+    """Renders every application-side limit rejection identically.
+
+    Covers burst limits, daily quotas, a busy indexing slot, and counter
+    outages. The body is built from the exception's own fields, all of
+    which are authored in app/core/limits.py — an upstream provider's
+    wording about billing, RPM or TPM can never reach a client here.
+
+    This is deliberately distinct from provider throttling, which is
+    still absorbed by the Voyage backoff and surfaced the way it always
+    was; the two must stay distinguishable to the frontend.
+    """
+    return JSONResponse(
+        status_code=exc.http_status,
+        content=exc.to_payload(),
+        headers={"Retry-After": str(exc.retry_after_seconds)},
+    )
+
 
 # ====================================
 # Core Routes

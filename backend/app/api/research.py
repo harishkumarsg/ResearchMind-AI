@@ -3,7 +3,8 @@ import uuid
 from fastapi import APIRouter, Depends
 from qdrant_client.models import FieldCondition, Filter, MatchValue
 
-from app.core.auth import get_current_owner_id
+from app.core.limits import UsageLimitError
+from app.core.usage_guard import charge_ai_unit, precheck_ai_generation
 from app.rag.embedder import encode_query
 from app.rag.vector_store import COLLECTION_NAME, client
 from app.rag.reranker import rerank_results
@@ -23,7 +24,7 @@ MAX_CONTEXT_LENGTH = 12000
 
 
 @router.get("/research")
-def research(query: str, owner_id: str = Depends(get_current_owner_id)):
+def research(query: str, owner_id: str = Depends(precheck_ai_generation)):
 
     try:
 
@@ -32,6 +33,9 @@ def research(query: str, owner_id: str = Depends(get_current_owner_id)):
         # ==================================
         # Query Embedding
         # ==================================
+
+        # Last safe point: the next statement is the provider call.
+        charge_ai_unit(owner_id)
 
         query_vector = encode_query(query)
 
@@ -311,6 +315,13 @@ CONTENT:
             "context_length":
             len(context)
         }
+
+    except UsageLimitError:
+        # A usage rejection is not an application failure. It must reach the
+        # handler in app/main.py as a normalized 429/503 rather than being
+        # flattened into this endpoint's 200 {"status": "error"} shape,
+        # which is how the frontend tells the two apart.
+        raise
 
     except Exception as e:
 

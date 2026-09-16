@@ -9,9 +9,11 @@ from datetime import datetime, timezone
 from sqlalchemy import (
     BigInteger,
     Column,
+    Date,
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     String,
     Text,
     Uuid,
@@ -105,3 +107,31 @@ class ChatMessage(Base):
     role = Column(String(16), nullable=False)  # one of CHAT_ROLES
     content = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
+
+
+class UsageCounter(Base):
+    """Durable per-user daily usage counters (migration 0004).
+
+    One row per (owner_id, day, metric); the composite primary key is
+    also the only index the lookup needs. `day` is a UTC date computed in
+    Python, never from the database clock, so PostgreSQL and the offline
+    SQLite harness agree on when a day rolls over.
+
+    Rows are written exclusively by the conditional UPSERT in
+    app/core/quota.py — never by the ORM — so that the increment stays a
+    single atomic statement. This model exists so the table is visible to
+    Base.metadata (tests create it) and so the schema is documented in
+    the same place as its siblings.
+
+    Deletion is by cascade from auth.users only: the application never
+    deletes counters, which is why the app role is granted no DELETE on
+    this table (see migration 0004).
+    """
+
+    __tablename__ = "usage_counters"
+
+    owner_id = Column(Uuid, primary_key=True)
+    day = Column(Date, primary_key=True)
+    metric = Column(String(40), primary_key=True)
+    count = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)

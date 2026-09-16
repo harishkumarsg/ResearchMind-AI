@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends
 from qdrant_client.models import FieldCondition, Filter, MatchValue
 
-from app.core.auth import get_current_owner_id
+from app.core.limits import UsageLimitError
+from app.core.usage_guard import charge_ai_unit, precheck_ai_generation
 from app.rag.embedder import encode_query
 from app.rag.vector_store import COLLECTION_NAME, client
 from app.rag.reranker import rerank_results
@@ -20,7 +21,7 @@ MAX_CONTEXT_LENGTH = 15000
 def compare_papers(
     paper1: str,
     paper2: str,
-    owner_id: str = Depends(get_current_owner_id),
+    owner_id: str = Depends(precheck_ai_generation),
 ):
 
     try:
@@ -166,6 +167,10 @@ CONTENT:
         # ==================================
         # Paper 1
         # ==================================
+
+        # Last safe point: get_paper_context() embeds immediately, and a
+        # comparison is one billable operation even though it embeds twice.
+        charge_ai_unit(owner_id)
 
         (
             context1,
@@ -343,6 +348,13 @@ PAPER 2 CONTEXT
             "stored_in_memory":
             True
         }
+
+    except UsageLimitError:
+        # A usage rejection is not an application failure. It must reach the
+        # handler in app/main.py as a normalized 429/503 rather than being
+        # flattened into this endpoint's 200 {"status": "error"} shape,
+        # which is how the frontend tells the two apart.
+        raise
 
     except Exception as e:
 

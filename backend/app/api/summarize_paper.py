@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends
 from qdrant_client.models import FieldCondition, Filter, MatchValue
 
-from app.core.auth import get_current_owner_id
+from app.core.limits import UsageLimitError
+from app.core.usage_guard import charge_ai_unit, precheck_ai_generation
 from app.rag.embedder import encode_query
 from app.rag.vector_store import COLLECTION_NAME, client
 from app.rag.reranker import rerank_results
@@ -18,7 +19,7 @@ router = APIRouter()
 @router.get("/summarize-paper")
 def summarize_paper(
     paper_name: str,
-    owner_id: str = Depends(get_current_owner_id),
+    owner_id: str = Depends(precheck_ai_generation),
 ):
 
     try:
@@ -29,6 +30,9 @@ def summarize_paper(
         # Search — owner_id filter is server-constructed from the
         # verified JWT identity, never from any client-supplied value.
         # -----------------------------------
+
+        # Last safe point: the next statement is the provider call.
+        charge_ai_unit(owner_id)
 
         query_vector = encode_query(
             paper_name
@@ -385,6 +389,13 @@ Context:
             "stored_in_memory":
             True
         }
+
+    except UsageLimitError:
+        # A usage rejection is not an application failure. It must reach the
+        # handler in app/main.py as a normalized 429/503 rather than being
+        # flattened into this endpoint's 200 {"status": "error"} shape,
+        # which is how the frontend tells the two apart.
+        raise
 
     except Exception as e:
 
