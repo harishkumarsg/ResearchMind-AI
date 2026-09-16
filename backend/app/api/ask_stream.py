@@ -175,13 +175,22 @@ def ask_stream(question: str, owner_id: str = Depends(precheck_ai_generation)):
             ranked = rerank_results(search_query, results)
             filtered = ranked[:TOP_CHUNKS]
 
-            # Paper lock for follow-ups.
+            # Paper lock for follow-ups — and ONLY for follow-ups.
             #
             # Keyed on chat_sessions.current_paper_id — an id, not a
             # title, so two papers sharing a title cannot be conflated.
             # Both /ask-stream and /summarize-paper write that pointer,
             # so a summarise-then-follow-up locks to the summarised paper
             # and survives a restart.
+            #
+            # A NEW question keeps whatever the retriever ranked highest,
+            # across every paper in the library. There used to be an
+            # `elif` here that narrowed a new question's evidence to the
+            # single paper owning the top hit; it meant a library-wide
+            # question such as "what is the research about?" could never
+            # mention a second paper, even when that paper's chunk had
+            # been retrieved and ranked above other kept chunks. Retrieval
+            # relevance now decides, not document identity.
             if is_followup and chat_state.current_paper_id is not None:
                 locked = [
                     h for h in filtered
@@ -190,9 +199,6 @@ def ask_stream(question: str, owner_id: str = Depends(precheck_ai_generation)):
                 ]
                 if locked:
                     filtered = locked
-            elif filtered:
-                best_paper = filtered[0].payload.get("paper", "")
-                filtered = [h for h in filtered if h.payload.get("paper") == best_paper]
 
             # ----------------------------------------------------------
             # Evidence selection — the SINGLE source of truth.
