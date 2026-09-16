@@ -89,6 +89,107 @@ def generate_sse_event(data: dict) -> str:
     return f"data: {json.dumps(data)}\n\n"
 
 
+def _evidence_block(hit):
+    """The exact passage text given to the model, or None for an empty chunk.
+
+    Page-labelled so the model has a real, checkable locator. Without this
+    it can only echo section numbers it finds in the prose, which point at
+    material never retrieved.
+    """
+    text = (hit.payload.get("text") or "").strip()
+    if not text:
+        return None
+    return f"[Page {hit.payload.get('page', '')}]\n{text}"
+
+
+def _paper_key(hit):
+    """Which paper a chunk belongs to. paper_id is unique; the title is only
+    a fallback for a payload without one, and two papers sharing a title
+    would then be treated as one."""
+    payload = hit.payload or {}
+    return payload.get("paper_id") or payload.get("paper") or ""
+
+
+def _select_evidence(filtered):
+    """Choose the exact passages given to the model, within MAX_CONTEXT.
+
+    `filtered` is the ranked, already owner-filtered candidate list. Only
+    those candidates are eligible: a paper can be represented only if one
+    of its chunks already earned a place in the top TOP_CHUNKS on
+    relevance, so nothing lower-ranked is ever pulled in to force breadth.
+
+    Two passes over that same list, with the same fit check:
+
+      1. Breadth — in rank order, take the best chunk of each distinct
+         paper that fits. Without this, a few long chunks from the top
+         paper can spend the whole budget before a second paper is
+         reached, so a library-wide question answers from one paper.
+      2. Depth — in rank order, fill the remaining budget with whatever
+         else fits.
+
+    The result is returned in original rank order, so the context, the
+    citations and selected[0] (which becomes chat_sessions
+    .current_paper_id) mean exactly what they meant before. With a single
+    paper, pass 1 takes the first chunk that fits — the same chunk a
+    single greedy pass takes first — and pass 2 then makes the same
+    decisions, so single-paper selection is unchanged.
+    """
+    chosen = {}  # rank index -> (hit, block)
+    seen_ids = set()
+    represented = set()
+    used_chars = 0
+
+    def take(index, hit, block):
+        nonlocal used_chars
+        # The separator is charged to every block after the first, so the
+        # running total equals the final joined length whatever order the
+        # two passes happen to choose blocks in.
+        cost = len(block) + (len(EVIDENCE_SEPARATOR) if chosen else 0)
+
+        # Budget is applied BEFORE anything is committed, so a chunk that
+        # does not fit is added to neither the context nor the citations.
+        # It is skipped, and lower-ranked candidates are still considered —
+        # a smaller one may fit.
+        if used_chars + cost > MAX_CONTEXT:
+            return False
+
+        seen_ids.add(hit.id)
+        chosen[index] = (hit, block)
+        used_chars += cost
+        return True
+
+    # Dedupe on the Qdrant point id, which is genuinely unique.
+    # payload["chunk_id"] is only the chunk's index WITHIN its page, so it
+    # repeats on every page (values 0-3 across the whole corpus) and using
+    # it silently discarded distinct passages from different pages.
+
+    # Pass 1 — breadth: at most one chunk per distinct paper.
+    for index, hit in enumerate(filtered):
+        if hit.id in seen_ids:
+            continue
+        paper = _paper_key(hit)
+        if paper in represented:
+            continue
+        block = _evidence_block(hit)
+        if block is None:
+            # An empty chunk never selects, so it never claims its paper's
+            # breadth slot either; a later non-empty chunk still can.
+            continue
+        if take(index, hit, block):
+            represented.add(paper)
+
+    # Pass 2 — depth: fill whatever budget remains, still in rank order.
+    for index, hit in enumerate(filtered):
+        if index in chosen or hit.id in seen_ids:
+            continue
+        block = _evidence_block(hit)
+        if block is None:
+            continue
+        take(index, hit, block)
+
+    return [chosen[index] for index in sorted(chosen)]
+
+
 @router.get("/ask-stream")
 def ask_stream(question: str, owner_id: str = Depends(precheck_ai_generation)):
 
@@ -203,47 +304,15 @@ def ask_stream(question: str, owner_id: str = Depends(precheck_ai_generation)):
             # ----------------------------------------------------------
             # Evidence selection — the SINGLE source of truth.
             #
-            # This one pass produces `selected`, and BOTH the context sent
-            # to the model and the citations sent to the UI are derived
-            # from it. There is deliberately no second, independent
+            # This one selection step (_select_evidence) produces
+            # `selected`, and BOTH the context sent to the model and the
+            # citations sent to the UI are derived from it. There is
+            # deliberately no second, independent
             # citation-selection path: that divergence is exactly what
             # previously let Sources cards advertise passages the model
             # never saw, and let the model see passages no card showed.
             # ----------------------------------------------------------
-            selected = []  # [(hit, block)] — the exact passages given to the LLM
-            seen_ids = set()
-            used_chars = 0
-
-            for h in filtered:
-                # Dedupe on the Qdrant point id, which is genuinely unique.
-                # payload["chunk_id"] is only the chunk's index WITHIN its
-                # page, so it repeats on every page (values 0-3 across the
-                # whole corpus) and using it silently discarded distinct
-                # passages from different pages.
-                if h.id in seen_ids:
-                    continue
-
-                text = (h.payload.get("text") or "").strip()
-                if not text:
-                    continue
-
-                # Page-labelled so the model has a real, checkable locator.
-                # Without this it can only echo section numbers it finds in
-                # the prose, which point at material never retrieved.
-                block = f"[Page {h.payload.get('page', '')}]\n{text}"
-                cost = len(block) + (len(EVIDENCE_SEPARATOR) if selected else 0)
-
-                # Budget is applied BEFORE anything is committed, so a chunk
-                # that does not fit is added to neither the context nor the
-                # citations. Skip it and keep considering lower-ranked
-                # candidates — a smaller one may still fit. Relative ranking
-                # among the chunks that do fit is preserved.
-                if used_chars + cost > MAX_CONTEXT:
-                    continue
-
-                seen_ids.add(h.id)
-                selected.append((h, block))
-                used_chars += cost
+            selected = _select_evidence(filtered)  # [(hit, block)] — the exact passages given to the LLM
 
             context = EVIDENCE_SEPARATOR.join(block for _, block in selected)
 
