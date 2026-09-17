@@ -27,6 +27,8 @@ from typing import List, Optional
 import voyageai
 from voyageai.error import RateLimitError
 
+from app.core.providers import voyage_client_options
+
 VOYAGE_EMBED_MODEL = "voyage-4"
 
 # Conservative token-budget batching: chunks are accumulated into a
@@ -58,7 +60,9 @@ def _get_client() -> voyageai.Client:
         api_key = os.environ.get("VOYAGE_API_KEY", "")
         if not api_key:
             raise RuntimeError("VOYAGE_API_KEY is not configured")
-        _client = voyageai.Client(api_key=api_key)
+        # Explicit timeout; SDK retries stay off, so the RateLimitError
+        # backoff below remains the only retry. See app/core/providers.py.
+        _client = voyageai.Client(api_key=api_key, **voyage_client_options())
     return _client
 
 

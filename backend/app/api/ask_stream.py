@@ -10,6 +10,12 @@ from dotenv import load_dotenv
 from qdrant_client.models import FieldCondition, Filter, MatchValue
 
 from app.core.limits import AI_GENERATION, UsageLimitError
+from app.core.providers import (
+    ProviderTimeout,
+    classify_provider_error,
+    groq_client_options,
+    groq_stream_deadline_seconds,
+)
 from app.core.quota import charge as charge_quota
 from app.core.usage_guard import precheck_ai_generation
 from app.rag.embedder import encode_query
@@ -23,7 +29,8 @@ from app.services.chat_store import (
 )
 
 load_dotenv()
-_groq_client = Groq(api_key=os.environ["GROQ_API_KEY"])
+# Explicit timeouts and a bounded retry count; see app/core/providers.py.
+_groq_client = Groq(api_key=os.environ["GROQ_API_KEY"], **groq_client_options())
 GROQ_MODEL = "openai/gpt-oss-120b"
 
 router = APIRouter()
@@ -329,6 +336,16 @@ def ask_stream(question: str, owner_id: str = Depends(precheck_ai_generation)):
             # Stream tokens from Groq
             answer_parts = []
 
+            # End-to-end deadline, started before the request is made so the
+            # time spent establishing the stream counts too. It is checked as
+            # each chunk arrives, which is event-driven rather than polling:
+            # a stream that keeps trickling in slowly still stops here, while
+            # a single stalled read is separately bounded by the client's
+            # read timeout. Worst case is therefore the deadline plus one
+            # read timeout.
+            stream_started = time.monotonic()
+            stream_deadline = groq_stream_deadline_seconds()
+
             stream_response = _groq_client.chat.completions.create(
                 model=GROQ_MODEL,
                 messages=[
@@ -340,11 +357,21 @@ def ask_stream(question: str, owner_id: str = Depends(precheck_ai_generation)):
                 stream=True,
             )
 
-            for chunk in stream_response:
-                token = chunk.choices[0].delta.content
-                if token:
-                    answer_parts.append(token)
-                    yield generate_sse_event({"type": "token", "text": token})
+            try:
+                for chunk in stream_response:
+                    if time.monotonic() - stream_started > stream_deadline:
+                        raise ProviderTimeout()
+                    token = chunk.choices[0].delta.content
+                    if token:
+                        answer_parts.append(token)
+                        yield generate_sse_event({"type": "token", "text": token})
+            finally:
+                # Always release the upstream connection: on the deadline,
+                # on a read timeout, and if the client disconnects mid-answer
+                # (which closes this generator). Harmless after a normal end.
+                close_stream = getattr(stream_response, "close", None)
+                if callable(close_stream):
+                    close_stream()
 
             full_answer = "".join(answer_parts).strip()
 
@@ -422,7 +449,19 @@ def ask_stream(question: str, owner_id: str = Depends(precheck_ai_generation)):
             })
 
         except Exception as e:
-            yield generate_sse_event({"type": "error", "text": str(e)})
+            # A provider failure — including the stream deadline above —
+            # reaches the client as a neutral message with a code. The
+            # assistant turn is never persisted on this path: persistence
+            # only happens after the stream completes normally.
+            provider_failure = classify_provider_error(e)
+            if provider_failure is not None:
+                yield generate_sse_event({
+                    "type": "error",
+                    "code": provider_failure.code,
+                    "text": provider_failure.message,
+                })
+            else:
+                yield generate_sse_event({"type": "error", "text": str(e)})
 
     return StreamingResponse(
         stream(),

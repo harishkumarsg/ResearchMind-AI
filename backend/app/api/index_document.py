@@ -10,6 +10,7 @@ from typing import Callable, Optional
 
 from app.core import limits as limits_config
 from app.core.limits import QuotaExceeded
+from app.core.providers import classify_provider_error
 from app.core.indexing_slot import indexing_slot
 from app.core.quota import charge as charge_quota
 from app.core.usage_guard import precheck_index_run
@@ -265,10 +266,15 @@ def index_document(
                     }
                 )
             except Exception as e:
+                # A provider failure is recorded with neutral wording, since
+                # status_detail is shown to the user; any other failure keeps
+                # its existing, application-authored message.
+                provider_failure = classify_provider_error(e)
+                detail = provider_failure.message if provider_failure is not None else str(e)
                 paper.status = "failed"
-                paper.status_detail = str(e)
+                paper.status_detail = detail
                 db.commit()
-                failed.append({"paper_id": str(paper.id), "error": str(e)})
+                failed.append({"paper_id": str(paper.id), "error": detail})
 
         # Nothing at all got through: report it as the limit rejection it
         # is, rather than a "success" with zero papers, which the frontend

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from qdrant_client.models import FieldCondition, Filter, MatchValue
 
 from app.core.auth import get_current_owner_id
+from app.core.providers import classify_provider_error
 from app.rag.embedder import encode_query
 from app.rag.vector_store import COLLECTION_NAME, client
 
@@ -121,6 +122,12 @@ def paper_details(paper_name: str, owner_id: str = Depends(get_current_owner_id)
         }
 
     except Exception as e:
+
+        # A provider failure gets a neutral, application-authored message
+        # instead of the raw exception text.
+        provider_failure = classify_provider_error(e)
+        if provider_failure is not None:
+            return provider_failure.to_payload()
 
         return {
             "status": "error",

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends
 from qdrant_client.models import FieldCondition, Filter, MatchValue
 
 from app.core.limits import UsageLimitError
+from app.core.providers import classify_provider_error
 from app.core.usage_guard import charge_ai_unit, precheck_ai_generation
 from app.rag.embedder import encode_query
 from app.rag.vector_store import COLLECTION_NAME, client
@@ -328,6 +329,12 @@ CONTENT:
         print(
             f"Research Error: {str(e)}"
         )
+
+        # A provider failure gets a neutral, application-authored message
+        # instead of the raw exception text.
+        provider_failure = classify_provider_error(e)
+        if provider_failure is not None:
+            return provider_failure.to_payload()
 
         return {
 

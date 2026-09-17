@@ -3,9 +3,12 @@ import time
 from groq import Groq
 from dotenv import load_dotenv
 
+from app.core.providers import classify_provider_error, groq_client_options
+
 load_dotenv()
 
-_groq_client = Groq(api_key=os.environ["GROQ_API_KEY"])
+# Explicit timeouts and a bounded retry count; see app/core/providers.py.
+_groq_client = Groq(api_key=os.environ["GROQ_API_KEY"], **groq_client_options())
 
 GROQ_MODEL = "openai/gpt-oss-120b"
 
@@ -82,5 +85,14 @@ ANSWER
         return answer
 
     except Exception as e:
+        # A provider failure is re-raised, classified, rather than disguised
+        # as the refusal below. Returning the refusal made a Groq timeout
+        # look exactly like "no evidence found" in compare, summarize and
+        # research — and /research then saved that refusal as a report.
+        provider_failure = classify_provider_error(e)
+        if provider_failure is not None:
+            print(f"QA Agent provider failure: {provider_failure.code}")
+            raise provider_failure from e
+
         print(f"QA Agent Error: {str(e)}")
         return "I could not find that information in the indexed papers."
