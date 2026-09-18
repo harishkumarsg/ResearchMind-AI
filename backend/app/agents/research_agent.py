@@ -4,8 +4,18 @@ from app.agents.qa_agent import generate_answer
 def research_agent(
     query,
     context,
-    citations=None
+    citations=None,
+    *,
+    max_context_chars,
+    max_tokens,
 ):
+    """Write one report from the supplied context.
+
+    Both budgets are required keyword arguments rather than defaults: the
+    endpoint builds the context and is the only thing that knows how big
+    it is, and a default here would be a second, silent budget of exactly
+    the kind Phase B exists to remove.
+    """
 
     prompt = f"""
 You are ResearchMind AI.
@@ -176,7 +186,9 @@ RETURN ONLY THE REPORT.
 
     report = generate_answer(
         prompt,
-        context
+        context,
+        max_context_chars=max_context_chars,
+        max_tokens=max_tokens,
     )
 
     return report

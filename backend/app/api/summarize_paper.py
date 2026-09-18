@@ -16,6 +16,20 @@ from app.memory import get_user_memory
 
 router = APIRouter()
 
+MAX_CHUNKS = 25
+MAX_CONTEXT_LENGTH = 20000
+
+#: Summarize's own budgets, replacing the shared 4000-character default
+#: that used to discard four fifths of the context assembled just above.
+#: 12000 rather than the full MAX_CONTEXT_LENGTH: a single-paper summary
+#: shows diminishing returns past roughly this point, and 20000 would make
+#: the cheapest of the three operations the most expensive.
+SUMMARY_CONTEXT_CHARS = 12000
+
+#: One multi-section summary, plus the reasoning tokens this model spends
+#: from the same completion budget.
+SUMMARY_MAX_TOKENS = 3000
+
 
 @router.get("/summarize-paper")
 def summarize_paper(
@@ -238,10 +252,10 @@ Content:
         # -----------------------------------
 
         context = "\n\n".join(
-            paper_chunks[:25]
+            paper_chunks[:MAX_CHUNKS]
         )
 
-        context = context[:20000]
+        context = context[:MAX_CONTEXT_LENGTH]
 
         # -----------------------------------
         # Summary Prompt
@@ -319,7 +333,9 @@ Context:
 
         summary = generate_answer(
             prompt,
-            context
+            context,
+            max_context_chars=SUMMARY_CONTEXT_CHARS,
+            max_tokens=SUMMARY_MAX_TOKENS,
         )
 
         # -----------------------------------

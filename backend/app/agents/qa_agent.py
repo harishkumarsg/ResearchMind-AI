@@ -54,6 +54,17 @@ I could not find that information in the indexed papers.
 #: one. Pass max_context_chars=None to disable truncation entirely.
 DEFAULT_MAX_CONTEXT_CHARS = 4000
 
+#: The completion budget applied when a caller does not state its own.
+#:
+#: 512 was enough for a one-paragraph Ask answer and hopelessly short for
+#: anything with sections: the report prompt alone demands thirteen of
+#: them, which is roughly 39 tokens each. That is what produced a report
+#: ending mid-sentence. Like the context budget, the number now belongs to
+#: the caller; this default preserves today's behaviour for callers that
+#: have not been given one. It also covers reasoning tokens, which this
+#: model draws from the same completion budget as visible text.
+DEFAULT_MAX_TOKENS = 512
+
 REFUSAL = "I could not find that information in the indexed papers."
 
 
@@ -77,6 +88,7 @@ def generate(
     *,
     system_prompt: str = SYSTEM_PROMPT,
     max_context_chars: Optional[int] = DEFAULT_MAX_CONTEXT_CHARS,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> GenerationResult:
     """Generate one completion and report how it ended.
 
@@ -120,7 +132,7 @@ ANSWER
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.0,
-            max_tokens=512,
+            max_tokens=max_tokens,
         )
 
         choice = response.choices[0]
@@ -187,6 +199,7 @@ def generate_answer(
     *,
     system_prompt: str = SYSTEM_PROMPT,
     max_context_chars: Optional[int] = DEFAULT_MAX_CONTEXT_CHARS,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> str:
     """The answer text alone, for callers that need nothing else.
 
@@ -199,4 +212,5 @@ def generate_answer(
         context,
         system_prompt=system_prompt,
         max_context_chars=max_context_chars,
+        max_tokens=max_tokens,
     ).text

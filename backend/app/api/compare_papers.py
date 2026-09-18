@@ -17,6 +17,62 @@ router = APIRouter()
 MAX_CHUNKS_PER_PAPER = 25
 MAX_CONTEXT_LENGTH = 15000
 
+#: Ceiling on the ASSEMBLED context, banners included. Two papers at
+#: MAX_CONTEXT_LENGTH each would be 30000 characters; the point of this
+#: number is that both papers are fitted into it deliberately, instead of
+#: being concatenated and then cut blind.
+COMPARE_TOTAL_CONTEXT_CHARS = 16000
+
+#: Thirteen comparison categories, each answered for both papers.
+COMPARE_MAX_TOKENS = 6000
+
+#: The banners are part of the budget. Allocating half of the total to
+#: each paper and THEN adding banners overflows the ceiling and re-arms
+#: the tail cut on Paper 2 -- the same off-by-envelope mistake in a new
+#: place. The template is defined once so its overhead can be measured
+#: rather than estimated.
+_CONTEXT_TEMPLATE = """
+========================
+PAPER 1 CONTEXT
+========================
+
+{paper1}
+
+========================
+PAPER 2 CONTEXT
+========================
+
+{paper2}
+"""
+
+_ENVELOPE_CHARS = len(_CONTEXT_TEMPLATE.format(paper1="", paper2=""))
+
+
+def allocate_paper_budgets(len1, len2, total=COMPARE_TOTAL_CONTEXT_CHARS):
+    """Split the available characters between two papers.
+
+    Equal shares with reallocation of whatever a short paper does not
+    use. Comparison is a symmetric operation, so each paper is guaranteed
+    half the space before either can have more: a proportional split
+    would let a verbose Paper 1 starve Paper 2, which is the original
+    defect wearing a more respectable name. A short paper may give its
+    slack away; it can never take from the other's floor.
+    """
+    available = max(total - _ENVELOPE_CHARS, 0)
+    floor = available // 2
+
+    if len1 <= floor and len2 <= floor:
+        return len1, len2
+
+    if len1 <= floor:
+        return len1, min(len2, available - len1)
+
+    if len2 <= floor:
+        return min(len1, available - len2), len2
+
+    # Both oversized: neither can be favoured by assembly order.
+    return floor, floor
+
 
 @router.get("/compare-papers")
 def compare_papers(
@@ -279,19 +335,19 @@ Paper 2:
 {detected_paper2}
 """
 
-        full_context = f"""
-========================
-PAPER 1 CONTEXT
-========================
+        # Budget each paper BEFORE assembly. The previous code joined
+        # both contexts and handed the result to a primitive that cut it
+        # to 4000 characters -- a cut that landed inside Paper 1, so the
+        # model compared one paper against nothing.
+        budget1, budget2 = allocate_paper_budgets(
+            len(context1),
+            len(context2)
+        )
 
-{context1}
-
-========================
-PAPER 2 CONTEXT
-========================
-
-{context2}
-"""
+        full_context = _CONTEXT_TEMPLATE.format(
+            paper1=context1[:budget1],
+            paper2=context2[:budget2]
+        )
 
         # ==================================
         # Generate Comparison
@@ -299,7 +355,9 @@ PAPER 2 CONTEXT
 
         comparison = generate_answer(
             prompt,
-            full_context
+            full_context,
+            max_context_chars=COMPARE_TOTAL_CONTEXT_CHARS,
+            max_tokens=COMPARE_MAX_TOKENS,
         )
 
         # ==================================

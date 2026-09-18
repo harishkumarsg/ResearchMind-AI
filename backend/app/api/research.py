@@ -23,6 +23,19 @@ MAX_RESULTS = 30
 MAX_CONTEXT_CHUNKS = 15
 MAX_CONTEXT_LENGTH = 12000
 
+#: Report's context budget is deliberately the same number as the context
+#: it assembles above, not a second independent limit: the defect was a
+#: 4000-character cut applied on top of a 12000-character context, and two
+#: constants that can drift apart would let it back in. Widening retrieval
+#: means changing MAX_CONTEXT_LENGTH, and this follows.
+REPORT_CONTEXT_CHARS = MAX_CONTEXT_LENGTH
+
+#: Thirteen required sections, plus the reasoning tokens this model draws
+#: from the same completion budget. At the old 512 the report could not
+#: physically finish, which is what produced a stored report ending
+#: mid-sentence.
+REPORT_MAX_TOKENS = 5000
+
 
 @router.get("/research")
 def research(query: str, owner_id: str = Depends(precheck_ai_generation)):
@@ -226,7 +239,9 @@ CONTENT:
         report = research_agent(
             query=query,
             context=context,
-            citations=citations
+            citations=citations,
+            max_context_chars=REPORT_CONTEXT_CHARS,
+            max_tokens=REPORT_MAX_TOKENS,
         )
 
         # ==================================
