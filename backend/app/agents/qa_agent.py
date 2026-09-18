@@ -1,9 +1,16 @@
 import os
 import time
+from dataclasses import dataclass
+from typing import Optional
+
 from groq import Groq
 from dotenv import load_dotenv
 
-from app.core.providers import classify_provider_error, groq_client_options
+from app.core.providers import (
+    IncompleteGeneration,
+    classify_provider_error,
+    groq_client_options,
+)
 
 load_dotenv()
 
@@ -35,12 +42,54 @@ I could not find that information in the indexed papers.
 11. Return only the answer.
 """
 
+#: The context budget applied when a caller does not state its own.
+#:
+#: This used to be a bare `context[:4000]` inside the function, applied
+#: blindly after each caller had already built and capped a much larger
+#: context of its own. That second, structure-blind cut is what silently
+#: discarded two thirds of a report's evidence and — because Compare
+#: concatenates paper 1 before paper 2 — every character of Compare's
+#: second paper. The budget now belongs to the caller; this default only
+#: preserves today's behaviour for callers that have not yet been given
+#: one. Pass max_context_chars=None to disable truncation entirely.
+DEFAULT_MAX_CONTEXT_CHARS = 4000
 
-def generate_answer(question, context):
+REFUSAL = "I could not find that information in the indexed papers."
+
+
+@dataclass(frozen=True)
+class GenerationResult:
+    """One completion, with the metadata needed to tell a finished answer
+    from a truncated one. `finish_reason` is the field that distinguishes
+    them; without it a length-stopped completion is indistinguishable from
+    a complete one, which is how a half-written report was stored as a
+    finished record."""
+
+    text: str
+    finish_reason: Optional[str] = None
+    completion_tokens: Optional[int] = None
+    reasoning_tokens: Optional[int] = None
+
+
+def generate(
+    question,
+    context,
+    *,
+    system_prompt: str = SYSTEM_PROMPT,
+    max_context_chars: Optional[int] = DEFAULT_MAX_CONTEXT_CHARS,
+) -> GenerationResult:
+    """Generate one completion and report how it ended.
+
+    Raises IncompleteGeneration when the model ran out of completion
+    budget, so a truncated answer can never be returned as a finished one.
+    A genuine "no evidence" result is kept separate: that is an empty
+    completion which stopped normally, and still yields REFUSAL.
+    """
 
     start_time = time.time()
 
-    context = context[:4000]
+    if max_context_chars is not None:
+        context = context[:max_context_chars]
 
     user_prompt = f"""
 CONTEXT
@@ -67,22 +116,56 @@ ANSWER
         response = _groq_client.chat.completions.create(
             model=GROQ_MODEL,
             messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.0,
             max_tokens=512,
         )
 
-        answer = response.choices[0].message.content.strip()
+        choice = response.choices[0]
+        finish_reason = getattr(choice, "finish_reason", None)
+
+        # `content` is None, not "", when the whole completion budget went
+        # to something other than visible text.
+        answer = (getattr(choice.message, "content", None) or "").strip()
+
+        usage = getattr(response, "usage", None)
+        details = getattr(usage, "completion_tokens_details", None)
+        completion_tokens = getattr(usage, "completion_tokens", None)
+        reasoning_tokens = getattr(details, "reasoning_tokens", None)
 
         elapsed = round(time.time() - start_time, 2)
-        print(f"Answer generated in {elapsed} sec")
+        print(
+            f"Answer generated in {elapsed} sec "
+            f"(finish_reason={finish_reason}, reasoning_tokens={reasoning_tokens})"
+        )
+
+        # Checked BEFORE the empty-answer branch: a completion that ran out
+        # of budget is an incomplete generation even when it produced no
+        # visible text, and must not be reported as "no evidence found".
+        if finish_reason == "length":
+            raise IncompleteGeneration(finish_reason)
 
         if not answer:
-            return "I could not find that information in the indexed papers."
+            return GenerationResult(
+                text=REFUSAL,
+                finish_reason=finish_reason,
+                completion_tokens=completion_tokens,
+                reasoning_tokens=reasoning_tokens,
+            )
 
-        return answer
+        return GenerationResult(
+            text=answer,
+            finish_reason=finish_reason,
+            completion_tokens=completion_tokens,
+            reasoning_tokens=reasoning_tokens,
+        )
+
+    except IncompleteGeneration:
+        # Already classified and neutral; re-raised unchanged so it is not
+        # reported as a generic provider fault.
+        raise
 
     except Exception as e:
         # A provider failure is re-raised, classified, rather than disguised
@@ -95,4 +178,25 @@ ANSWER
             raise provider_failure from e
 
         print(f"QA Agent Error: {str(e)}")
-        return "I could not find that information in the indexed papers."
+        return GenerationResult(text=REFUSAL)
+
+
+def generate_answer(
+    question,
+    context,
+    *,
+    system_prompt: str = SYSTEM_PROMPT,
+    max_context_chars: Optional[int] = DEFAULT_MAX_CONTEXT_CHARS,
+) -> str:
+    """The answer text alone, for callers that need nothing else.
+
+    A thin wrapper over generate(); the metadata is available there. Both
+    raise IncompleteGeneration on a length-stopped completion, so neither
+    can hand back a truncated answer that looks finished.
+    """
+    return generate(
+        question,
+        context,
+        system_prompt=system_prompt,
+        max_context_chars=max_context_chars,
+    ).text

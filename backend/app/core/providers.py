@@ -123,6 +123,7 @@ def voyage_client_options() -> dict:
 PROVIDER_TIMEOUT = "provider_timeout"
 PROVIDER_UNAVAILABLE = "provider_unavailable"
 PROVIDER_RATE_LIMITED = "provider_rate_limited"
+GENERATION_INCOMPLETE = "generation_incomplete"
 
 #: Authored here, never derived from an exception. The rate-limit wording
 #: deliberately says "rate-limited" so the frontend's existing rate-limit
@@ -131,6 +132,7 @@ _MESSAGES = {
     PROVIDER_TIMEOUT: "The research service took too long to respond. Please try again.",
     PROVIDER_UNAVAILABLE: "The research service is temporarily unavailable. Please try again shortly.",
     PROVIDER_RATE_LIMITED: "The research service is rate-limited right now. Please wait a moment and try again.",
+    GENERATION_INCOMPLETE: "The answer could not be completed. Please try again.",
 }
 
 
@@ -155,6 +157,23 @@ class ProviderFailure(Exception):
 class ProviderTimeout(ProviderFailure):
     def __init__(self) -> None:
         super().__init__(PROVIDER_TIMEOUT)
+
+
+class IncompleteGeneration(ProviderFailure):
+    """The model stopped because it ran out of completion budget.
+
+    Raised when finish_reason == "length". It is a ProviderFailure so that
+    the endpoints' existing classify_provider_error branches return the
+    neutral payload without needing a second error path — and so that a
+    truncated answer can never be mistaken for a finished one and
+    persisted. The cut-off text is deliberately discarded rather than
+    returned: half a report stored as a whole one is how a truncated
+    report reached the database in the first place.
+    """
+
+    def __init__(self, finish_reason: Optional[str] = "length") -> None:
+        super().__init__(GENERATION_INCOMPLETE)
+        self.finish_reason = finish_reason
 
 
 def classify_provider_error(exc: BaseException) -> Optional[ProviderFailure]:
