@@ -30,6 +30,37 @@ import uuid
 
 router = APIRouter()
 
+#: Dash-like characters with no glyph in WinAnsiEncoding, which is the
+#: encoding reportlab uses for the base-14 Helvetica this export renders
+#: with. With no glyph reportlab emits .notdef, which prints as a solid
+#: black square: a shipped PDF showed "multi<square>modal" wherever the
+#: model had written a U+2011 NON-BREAKING HYPHEN.
+#:
+#: U+2013 EN DASH, U+2014 EM DASH and U+2022 BULLET are deliberately NOT
+#: listed. WinAnsi does have those three (0x96, 0x97, 0x95), they render
+#: correctly today, and rewriting them would change output that is
+#: already right.
+_UNSUPPORTED_DASHES = {
+    0x2010: "-",  # HYPHEN
+    0x2011: "-",  # NON-BREAKING HYPHEN
+    0x2012: "-",  # FIGURE DASH
+    0x2015: "-",  # HORIZONTAL BAR
+    0x2212: "-",  # MINUS SIGN
+}
+
+
+def normalize_dashes(text: str) -> str:
+    """Replace dashes reportlab cannot render with ASCII "-".
+
+    Export-path only, on a local string. The stored report is never
+    rewritten, so the database keeps exactly what the model produced and
+    every other consumer of that row is unaffected.
+    """
+    if not text:
+        return text
+
+    return text.translate(_UNSUPPORTED_DASHES)
+
 
 @router.get("/export-report")
 def export_report(
@@ -91,6 +122,16 @@ def export_report(
             report,
             flags=re.IGNORECASE | re.DOTALL
         )
+
+        # ==================================
+        # Render-safe dashes — see normalize_dashes(). Applied here so
+        # every Paragraph built below inherits it, and to the query,
+        # which reaches the cover page by a separate path.
+        # ==================================
+
+        report = normalize_dashes(report)
+
+        query = normalize_dashes(query)
 
         # ==================================
         # PDF Setup
@@ -363,6 +404,8 @@ def export_report(
                     f"Source: {data['source']}<br/>"
                     f"Pages Referenced: {page_text}"
                 )
+
+                ref_text = normalize_dashes(ref_text)
 
                 content.append(
                     Paragraph(
