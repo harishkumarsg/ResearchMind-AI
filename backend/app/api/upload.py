@@ -5,11 +5,17 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.auth import AuthenticatedIdentity, get_current_identity
+from app.core.usage_guard import charge_upload_unit, precheck_upload
 from app.db.models import Paper
 from app.db.session import get_db_session
 from app.services.storage import build_storage_path, storage_object_exists, upload_pdf
 
 router = APIRouter()
+
+#: Authored here, never interpolated from an exception. status_detail is
+#: rendered in the UI, so a raw driver or SDK message would put internal
+#: wording — and potentially a path or a URL — in front of the user.
+STORAGE_FAILED_DETAIL = "The file could not be stored. Please try uploading it again."
 
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB
 PDF_MAGIC_BYTES = b"%PDF-"
@@ -32,6 +38,7 @@ def compute_paper_id(owner_id: str, content_hash: str) -> uuid.UUID:
 async def upload_pdf_endpoint(
     file: UploadFile = File(...),
     identity: AuthenticatedIdentity = Depends(get_current_identity),
+    _upload_allowance: str = Depends(precheck_upload),
     db: Session = Depends(get_db_session),
 ):
     if not file.filename:
@@ -132,6 +139,13 @@ async def upload_pdf_endpoint(
         db.commit()
 
     if needs_upload:
+        # Last safe point: the next statement is the Storage write. The
+        # filename, PDF magic bytes and size cap were all checked above,
+        # so a deterministic rejection has already happened without
+        # costing a unit. precheck_upload turned away the ordinary
+        # out-of-allowance case before the file was even read.
+        charge_upload_unit(owner_id)
+
         try:
             upload_pdf(
                 owner_id=owner_id,
@@ -141,7 +155,7 @@ async def upload_pdf_endpoint(
             )
         except Exception as e:
             paper.status = "failed"
-            paper.status_detail = f"Storage upload failed: {e}"
+            paper.status_detail = STORAGE_FAILED_DETAIL
             db.commit()
             raise HTTPException(status_code=502, detail="Failed to store the uploaded file")
 

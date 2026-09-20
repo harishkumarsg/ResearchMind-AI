@@ -201,7 +201,13 @@ class TestUploadOwnership(OwnershipTestBase):
             papers = session.query(Paper).filter(Paper.owner_id == uuid.UUID(USER_A)).all()
             self.assertEqual(len(papers), 1)
             self.assertEqual(papers[0].status, "failed")
-            self.assertIn("storage is down", papers[0].status_detail)
+            # status_detail is rendered in the UI, so it is now an
+            # application-authored message rather than str(e). The row is
+            # still marked failed, which is what this test is about.
+            from app.api.upload import STORAGE_FAILED_DETAIL
+
+            self.assertEqual(papers[0].status_detail, STORAGE_FAILED_DETAIL)
+            self.assertNotIn("storage is down", papers[0].status_detail)
         finally:
             session.close()
 
@@ -523,7 +529,10 @@ class TestUploadOwnership(OwnershipTestBase):
         try:
             paper = session.query(Paper).filter(Paper.id == expected_paper_id).first()
             self.assertEqual(paper.status, "failed")
-            self.assertIn("storage is down", paper.status_detail)
+            from app.api.upload import STORAGE_FAILED_DETAIL
+
+            self.assertEqual(paper.status_detail, STORAGE_FAILED_DETAIL)
+            self.assertNotIn("storage is down", paper.status_detail)
         finally:
             session.close()
 
@@ -684,7 +693,13 @@ class TestIndexingOwnership(OwnershipTestBase):
             bad = session.query(Paper).filter(Paper.title == "Bad_Paper").first()
             good = session.query(Paper).filter(Paper.title == "Good_Paper").first()
             self.assertEqual(bad.status, "failed")
-            self.assertIn("Voyage API failure", bad.status_detail)
+            # An unclassified indexing failure is authored too; a
+            # classified provider failure keeps its neutral provider
+            # message. Either way the raw text must not survive.
+            from app.api.index_document import INDEXING_FAILED_DETAIL
+
+            self.assertEqual(bad.status_detail, INDEXING_FAILED_DETAIL)
+            self.assertNotIn("Voyage API failure", bad.status_detail)
             self.assertEqual(good.status, "indexed")
         finally:
             session.close()

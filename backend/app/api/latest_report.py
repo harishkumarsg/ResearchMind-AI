@@ -22,6 +22,7 @@ from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_owner_id
+from app.core.usage_guard import guard_cheap_read
 from app.db.models import Report
 from app.db.session import get_db_session
 
@@ -32,6 +33,7 @@ router = APIRouter()
 def latest_report(
     response: Response,
     owner_id: str = Depends(get_current_owner_id),
+    _cheap_read: str = Depends(guard_cheap_read),
     db: Session = Depends(get_db_session),
 ):
     # owner_id is the verified JWT `sub`, never a query parameter or

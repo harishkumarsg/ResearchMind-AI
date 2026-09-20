@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Response, status
 
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_owner_id
+from app.core.usage_guard import guard_cheap_read
 from app.db.models import Report
 from app.db.session import get_db_session
 
@@ -64,7 +65,9 @@ def normalize_dashes(text: str) -> str:
 
 @router.get("/export-report")
 def export_report(
+    response: Response,
     owner_id: str = Depends(get_current_owner_id),
+    _cheap_read: str = Depends(guard_cheap_read),
     db: Session = Depends(get_db_session)
 ):
 
@@ -104,12 +107,19 @@ def export_report(
 
         if not report:
 
+            # 404, not a 200 error body. The old shape left response.ok
+            # true, so the browser saved a JSON payload under the name
+            # research-report.pdf. A caller whose report belongs to
+            # someone else lands here too: the owner filter above simply
+            # returns nothing, so this reveals no other owner's state.
+            response.status_code = status.HTTP_404_NOT_FOUND
+
             return {
 
                 "status": "error",
 
                 "message":
-                "No research report found. Run /research first."
+                "No research report found. Generate a report first."
             }
 
         # ==================================

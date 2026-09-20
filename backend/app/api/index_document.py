@@ -30,6 +30,11 @@ from app.services.text_cleaner import clean_text
 
 router = APIRouter()
 
+#: Authored here, never interpolated from an exception. status_detail is
+#: shown in the UI; a provider failure already has a neutral classified
+#: message, and anything unclassified must not arrive as str(e).
+INDEXING_FAILED_DETAIL = "Processing this paper failed. Please try again."
+
 
 def _clear_existing_points_for_paper(paper_id: str, owner_id: str) -> None:
     """Makes re-indexing a single paper idempotent (safe to retry after a
@@ -270,7 +275,11 @@ def index_document(
                 # status_detail is shown to the user; any other failure keeps
                 # its existing, application-authored message.
                 provider_failure = classify_provider_error(e)
-                detail = provider_failure.message if provider_failure is not None else str(e)
+                detail = (
+                    provider_failure.message
+                    if provider_failure is not None
+                    else INDEXING_FAILED_DETAIL
+                )
                 paper.status = "failed"
                 paper.status_detail = detail
                 db.commit()

@@ -73,3 +73,34 @@ precheck_ai_generation = _guard(limits_config.AI_GENERATION, charge=False)
 #: Checks the indexing allowance without consuming it. /index-document
 #: charges only once it knows a run will actually start.
 precheck_index_run = _guard(limits_config.INDEX_RUN, charge=False)
+
+#: Charges one query embedding up front. /search and /paper-details both
+#: call encode_query() as their FIRST statement, so a dependency that
+#: charges is the correct shape here: the rejection happens before the
+#: handler body runs, and therefore before any Voyage request. Exactly
+#: one charge per request — the handlers never charge again.
+charge_query_embedding = _guard(limits_config.QUERY_EMBEDDING, charge=True)
+
+#: Checks the upload allowance without consuming it. /upload validates
+#: the filename, the PDF magic bytes and the size cap before doing any
+#: external work, and those deterministic rejections must not cost a
+#: unit; charge_upload_unit() is called later, once the request is known
+#: to be heading for Storage.
+precheck_upload = _guard(limits_config.UPLOAD, charge=False)
+
+#: Burst guard for cheap authenticated reads. CHEAP_READ has no per-day
+#: limit, so quota.charge() returns immediately without touching the
+#: database and mechanism A does the real work.
+guard_cheap_read = _guard(limits_config.CHEAP_READ, charge=True)
+
+
+def charge_upload_unit(owner_id: str) -> None:
+    """Consumes one upload unit, immediately before the Storage write.
+
+    The same reasoning as charge_ai_unit: a dependency would bill a
+    missing filename, a non-PDF or an oversized file — deterministic
+    rejections that never reach Supabase Storage and cost nothing
+    externally. precheck_upload has already turned away the ordinary
+    "out of allowance" case with a real 429.
+    """
+    quota.charge(owner_id, limits_config.UPLOAD)

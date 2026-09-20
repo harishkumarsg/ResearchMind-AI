@@ -26,6 +26,9 @@ vi.mock("@/lib/auth-context", () => ({
 
 vi.mock("@/lib/api", () => ({
   getPapers: vi.fn().mockResolvedValue([]),
+  // AppShell reads the detailed list so it can show uploading/indexing/
+  // failed papers alongside the indexed ones.
+  getPapersDetailed: vi.fn().mockResolvedValue([]),
   deletePaper: vi.fn(),
   searchPapers: vi.fn().mockResolvedValue([]),
 }));

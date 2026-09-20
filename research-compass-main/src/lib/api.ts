@@ -471,6 +471,33 @@ export async function getPaperDetails(paperName: string): Promise<PaperDetails> 
   return data;
 }
 
+/** One paper and where it is in the upload -> index pipeline. */
+export interface PaperDetail {
+  paper_id: string;
+  title: string;
+  status: "uploading" | "uploaded" | "indexing" | "indexed" | "failed" | "deleting";
+  /**
+   * Application-authored, never a raw exception. The backend writes only
+   * neutral wording here precisely because it is rendered.
+   */
+  status_detail: string | null;
+}
+
+/**
+ * Every paper this owner has, in any state.
+ *
+ * getPapers() returns only the titles that are ready to query, which is
+ * why a paper that failed to upload or index was invisible in the UI.
+ */
+export async function getPapersDetailed(): Promise<PaperDetail[]> {
+  const response = await authFetch(`${API_BASE_URL}/papers`);
+  const data = await response.json();
+  if (data.status !== "success") {
+    throw new Error(data.message || "Failed to fetch papers");
+  }
+  return (data.papers_detailed ?? []) as PaperDetail[];
+}
+
 export async function getPapers(): Promise<string[]> {
   const response = await authFetch(`${API_BASE_URL}/papers`);
   const data = await response.json();

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from qdrant_client.models import FieldCondition, Filter, MatchValue
 
 from app.core.auth import get_current_owner_id
+from app.core.usage_guard import charge_query_embedding
 from app.core.providers import classify_provider_error, internal_error_payload
 from app.rag.embedder import encode_query
 from app.rag.vector_store import COLLECTION_NAME, client
@@ -10,7 +11,11 @@ router = APIRouter()
 
 
 @router.get("/paper-details")
-def paper_details(paper_name: str, owner_id: str = Depends(get_current_owner_id)):
+def paper_details(
+    paper_name: str,
+    owner_id: str = Depends(get_current_owner_id),
+    _embedding_unit: str = Depends(charge_query_embedding),
+):
 
     try:
 

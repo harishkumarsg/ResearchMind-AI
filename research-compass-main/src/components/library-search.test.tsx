@@ -27,6 +27,7 @@ vi.mock("@/lib/auth-context", () => ({
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
   getPapers: vi.fn().mockResolvedValue([]),
+  getPapersDetailed: vi.fn().mockResolvedValue([]),
   deletePaper: vi.fn(),
   searchPapers: vi.fn(),
 }));

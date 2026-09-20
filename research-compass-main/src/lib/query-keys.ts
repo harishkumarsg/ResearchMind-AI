@@ -23,6 +23,14 @@
 export const queryKeys = {
   papers: (userId?: string) => ["papers", userId] as const,
 
+  /**
+   * Every paper with its indexing state, including the uploading,
+   * indexing and failed ones that `papers` deliberately omits. Its own
+   * namespace rather than a child of ["papers", ...]: React Query
+   * matches by prefix, and these two hold different shapes.
+   */
+  papersDetailed: (userId?: string) => ["papers-detailed", userId] as const,
+
   stats: (userId?: string) => ["stats", userId] as const,
 
   /** The owner's most recent stored report, restored on page load. */

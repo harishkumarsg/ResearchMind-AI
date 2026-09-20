@@ -3,6 +3,7 @@ import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
 import {
+  AlertCircle,
   FileText,
   GitCompare,
   Home,
@@ -16,7 +17,8 @@ import {
   X,
 } from "lucide-react";
 import { BrandMark } from "@/components/brand-mark";
-import { deletePaper, getPapers } from "@/lib/api";
+import { deletePaper, getPapersDetailed } from "@/lib/api";
+import type { PaperDetail } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { queryKeys } from "@/lib/query-keys";
 
@@ -31,6 +33,51 @@ const sidebarNav = [
 
 // Shared with the Library page so the sidebar control can focus its input.
 export const LIBRARY_SEARCH_INPUT_ID = "library-search-input";
+
+//: Calm, user-facing wording for each non-indexed state. Authored here;
+//: the backend's status_detail is shown only for a failure, and is
+//: itself application-authored rather than an exception string.
+const PAPER_STATUS_LABEL: Record<string, string> = {
+  uploading: "Uploading…",
+  uploaded: "Waiting to process",
+  indexing: "Processing…",
+  failed: "Processing failed",
+  deleting: "Removing…",
+};
+
+/**
+ * One paper that is not yet ready to query.
+ *
+ * Not a link: these papers have no indexed content, so the detail page
+ * would have nothing to show. No retry control is offered — there is no
+ * retry endpoint to call yet.
+ */
+function PaperStatusRow({ paper }: { paper: PaperDetail }) {
+  const failed = paper.status === "failed";
+  const label = PAPER_STATUS_LABEL[paper.status] ?? "Processing…";
+
+  return (
+    <div
+      className="flex items-start gap-2 rounded-md px-3 py-1.5 text-[12px] text-muted-foreground"
+      title={paper.title.replace(/_/g, " ")}
+    >
+      {failed ? (
+        <AlertCircle className="mt-0.5 h-3 w-3 shrink-0 text-destructive" />
+      ) : (
+        <Loader2 className="mt-0.5 h-3 w-3 shrink-0 animate-spin" />
+      )}
+      <div className="min-w-0">
+        <div className="truncate">{paper.title.replace(/_/g, " ")}</div>
+        <div className={failed ? "text-[11px] text-destructive" : "text-[11px]"}>
+          {label}
+        </div>
+        {failed && paper.status_detail && (
+          <div className="text-[11px] text-muted-foreground">{paper.status_detail}</div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function isMacPlatform() {
   if (typeof navigator === "undefined") return false;
@@ -64,14 +111,23 @@ export function AppShell({
   const { session, user, isLoading: authLoading, signInWithGoogle, signOut } = useAuth();
   const userId = user?.id;
 
-  const { data: papers = [] } = useQuery({
-    queryKey: queryKeys.papers(userId),
-    queryFn: getPapers,
+  const { data: allPapers = [] } = useQuery({
+    queryKey: queryKeys.papersDetailed(userId),
+    queryFn: getPapersDetailed,
     staleTime: 30_000,
     // Never fetch before the session resolves — an unauthenticated call
     // would throw AuthenticationRequiredError and burn retries.
     enabled: !!userId,
   });
+
+  // The ready-to-query titles, derived rather than fetched separately so
+  // the sidebar still costs one request.
+  const papers = allPapers.filter((p) => p.status === "indexed").map((p) => p.title);
+
+  // Anything still being processed, or that failed. These were invisible
+  // before: /papers returns indexed titles only, so a paper whose upload
+  // or indexing failed simply never appeared.
+  const unfinished = allPapers.filter((p) => p.status !== "indexed");
 
   // navigator is unavailable during SSR, so render the non-Mac hint first
   // and switch after mount to avoid a hydration mismatch.
@@ -111,6 +167,7 @@ export function AppShell({
     try {
       await deletePaper(paperName);
       qc.invalidateQueries({ queryKey: queryKeys.papers(userId) });
+      qc.invalidateQueries({ queryKey: queryKeys.papersDetailed(userId) });
       qc.invalidateQueries({ queryKey: queryKeys.stats(userId) });
       // Search now has its own namespace, so it is no longer swept up by
       // the ["papers"] prefix — invalidate it explicitly so results for a
@@ -196,7 +253,18 @@ export function AppShell({
               </div>
             )}
 
-            {papers.length === 0 && (
+            {unfinished.length > 0 && (
+              <div className="mt-4">
+                <div className="px-3 pb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Processing
+                </div>
+                {unfinished.map((p) => (
+                  <PaperStatusRow key={p.paper_id} paper={p} />
+                ))}
+              </div>
+            )}
+
+            {papers.length === 0 && unfinished.length === 0 && (
               <div className="mt-4">
                 <div className="px-3 pb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                   Indexed Papers

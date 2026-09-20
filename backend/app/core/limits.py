@@ -32,13 +32,17 @@ from typing import Any, Dict, Optional
 # ----------------------------------------------------------------------
 AI_GENERATION = "ai_generation"  # ask-stream, research, compare-papers, summarize-paper
 INDEX_RUN = "index_run"  # index-document
-QUERY_EMBEDDING = "query_embedding"  # search, paper-details — defined, NOT yet enforced
-UPLOAD = "upload"  # upload — defined, NOT yet enforced
-CHEAP_READ = "cheap_read"  # stats, papers, export, delete — defined, NOT yet enforced
+QUERY_EMBEDDING = "query_embedding"  # search, paper-details
+UPLOAD = "upload"  # upload
+CHEAP_READ = "cheap_read"  # export-report, latest-report (burst only)
 
-#: Metrics wired into endpoints in Phase 3. The others are configured
-#: here so the limits are reviewable now, but nothing reads them yet.
-ENFORCED_METRICS = (AI_GENERATION, INDEX_RUN)
+#: Metrics actually wired into endpoints. Kept accurate rather than
+#: aspirational: this tuple is the reviewable answer to "what is really
+#: metered?", and it was stale for the whole period QUERY_EMBEDDING,
+#: UPLOAD and CHEAP_READ were configured but unenforced.
+#:
+#: CHEAP_READ has no per-day limit by design — it is a burst guard only.
+ENFORCED_METRICS = (AI_GENERATION, INDEX_RUN, QUERY_EMBEDDING, UPLOAD, CHEAP_READ)
 
 #: metric -> (per-minute env var, per-minute default, per-day env var, per-day default)
 #: A None on either side means "this metric has no limit of that kind".

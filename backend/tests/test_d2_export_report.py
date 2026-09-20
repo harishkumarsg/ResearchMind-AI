@@ -191,7 +191,10 @@ class TestCrossUserIsolation(ExportReportTestCase):
 
         resp = self.client.get("/export-report")
 
-        self.assertEqual(resp.status_code, 200)
+        # 404 now, not a 200 error body. The isolation assertion below is
+        # the point of this test and is unchanged: another owner's report
+        # is simply not in the result set.
+        self.assertEqual(resp.status_code, 404)
         body = resp.json()
         self.assertEqual(body["status"], "error")
         self.assertIn("No research report found", body["message"])
@@ -243,11 +246,13 @@ class TestMissingReportHandling(ExportReportTestCase):
 
         resp = self.client.get("/export-report")
 
-        self.assertEqual(resp.status_code, 200)
+        # Previously 200, which left response.ok true and let the browser
+        # save a JSON body named research-report.pdf.
+        self.assertEqual(resp.status_code, 404)
         self.assertEqual(
             resp.json(),
             {"status": "error",
-             "message": "No research report found. Run /research first."},
+             "message": "No research report found. Generate a report first."},
         )
 
     def test_stale_txt_fallback_is_ignored(self):

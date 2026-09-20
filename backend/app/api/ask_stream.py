@@ -48,13 +48,62 @@ EVIDENCE_SEPARATOR = "\n\n"
 # bare "Page 6" would false-positive on passage text the answer quotes.
 CITED_PAGE_PATTERN = re.compile(r"[\[\(【]\s*Page\s*(\d+)\s*[\]\)】]", re.IGNORECASE)
 
-FOLLOW_UP_WORDS = [
-    "it", "they", "them", "this", "that", "these", "those",
-    "its", "their", "algorithm", "hardware", "method", "approach",
-    "system", "work", "works", "used", "use", "implementation",
-    "architecture", "dataset", "results", "accuracy", "performance",
-    "advantages", "limitations", "future scope", "future work",
-]
+#: Single words that mark a question as continuing the previous turn.
+#: Matched as WHOLE TOKENS. The previous implementation tested
+#: `word in question_lower`, a raw substring search over the entire
+#: string, so "network" matched "work", "framework" matched "work" and
+#: "architecture" matched "architecture" only by luck rather than by
+#: intent. Any question containing such a substring was silently
+#: rewritten with a stale topic prepended.
+FOLLOW_UP_WORDS = frozenset(
+    {
+        "it", "they", "them", "this", "that", "these", "those",
+        "its", "their", "algorithm", "hardware", "method", "methodology",
+        "approach", "system", "work", "works", "used", "use",
+        "implementation", "architecture", "dataset", "results",
+        "accuracy", "performance", "advantages", "limitations",
+        "why", "more",
+    }
+)
+
+#: Multi-word markers, matched as contiguous token sequences so they
+#: survive the switch to token matching.
+FOLLOW_UP_PHRASES = (
+    ("future", "scope"),
+    ("future", "work"),
+)
+
+#: Words, apostrophes and digits; everything else is a separator. This is
+#: what makes "why?" match while "framework" does not.
+_TOKEN_PATTERN = re.compile(r"[a-z0-9']+")
+
+
+def tokenize_question(question: str) -> list:
+    """Lowercase word tokens, punctuation discarded."""
+    return _TOKEN_PATTERN.findall(question.lower())
+
+
+def is_follow_up_question(question: str) -> bool:
+    """Does this question continue the previous turn?
+
+    Whole-token matching only. A question is a follow-up when it contains
+    one of FOLLOW_UP_WORDS as its own token, or one of FOLLOW_UP_PHRASES
+    as consecutive tokens.
+    """
+    tokens = tokenize_question(question)
+    if not tokens:
+        return False
+
+    if FOLLOW_UP_WORDS.intersection(tokens):
+        return True
+
+    for phrase in FOLLOW_UP_PHRASES:
+        span = len(phrase)
+        for start in range(len(tokens) - span + 1):
+            if tuple(tokens[start:start + span]) == phrase:
+                return True
+
+    return False
 
 # The one configured refusal string. Defined once and interpolated into
 # the prompt below so the text the model is told to emit and the text the
@@ -214,12 +263,9 @@ def ask_stream(question: str, owner_id: str = Depends(precheck_ai_generation)):
             # current paper, so this survives a restart.
             chat_state = load_chat_state(owner_id)
 
-            question_lower = question.lower()
-
-            # Follow-up detection
-            is_followup = bool(chat_state.history) and any(
-                word in question_lower for word in FOLLOW_UP_WORDS
-            )
+            # Follow-up detection — whole-token, see
+            # is_follow_up_question(). A first turn is never a follow-up.
+            is_followup = bool(chat_state.history) and is_follow_up_question(question)
 
             search_query = question
             if is_followup and chat_state.current_topic:
