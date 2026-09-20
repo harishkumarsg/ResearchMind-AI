@@ -31,6 +31,10 @@ export const queryKeys = {
    */
   papersDetailed: (userId?: string) => ["papers-detailed", userId] as const,
 
+  /** The owner's own PDF bytes, fetched through the authenticated API. */
+  paperFile: (userId: string | undefined, paperId: string) =>
+    ["paper-file", userId, paperId] as const,
+
   stats: (userId?: string) => ["stats", userId] as const,
 
   /** The owner's most recent stored report, restored on page load. */

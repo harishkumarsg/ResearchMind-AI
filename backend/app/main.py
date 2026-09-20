@@ -42,6 +42,10 @@ from app.api.latest_report import (
     router as latest_report_router
 )
 
+from app.api.paper_file import (
+    router as paper_file_router
+)
+
 from app.api.stats import (
     router as stats_router
 )
@@ -174,6 +178,11 @@ app.include_router(
 app.include_router(
     latest_report_router,
     tags=["Reports"]
+)
+
+app.include_router(
+    paper_file_router,
+    tags=["Paper File"]
 )
 
 app.include_router(

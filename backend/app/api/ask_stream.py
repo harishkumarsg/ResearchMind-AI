@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 import json
 import os
@@ -18,6 +20,8 @@ from app.core.providers import (
 )
 from app.core.quota import charge as charge_quota
 from app.core.usage_guard import precheck_ai_generation
+from app.db.models import Paper
+from app.db.session import session_scope
 from app.rag.embedder import encode_query
 from app.rag.vector_store import COLLECTION_NAME, client
 from app.rag.reranker import rerank_results
@@ -246,8 +250,53 @@ def _select_evidence(filtered):
     return [chosen[index] for index in sorted(chosen)]
 
 
+def resolve_owned_paper_id(owner_id: str, paper_id: str) -> str:
+    """This owner's paper id, or "" if it is not theirs.
+
+    Postgres is the authority, exactly as it is for /paper-file. A
+    malformed id, an unknown id and another owner's id all return "" so
+    the caller renders one indistinguishable response.
+    """
+    try:
+        wanted = uuid.UUID(paper_id)
+        owner_uuid = uuid.UUID(owner_id)
+    except (ValueError, AttributeError, TypeError):
+        return ""
+
+    with session_scope(owner_id) as db:
+        row = (
+            db.query(Paper.id)
+            .filter(Paper.id == wanted, Paper.owner_id == owner_uuid)
+            .first()
+        )
+
+    return str(wanted) if row is not None else ""
+
+
 @router.get("/ask-stream")
-def ask_stream(question: str, owner_id: str = Depends(precheck_ai_generation)):
+def ask_stream(
+    question: str,
+    paper_id: str = "",
+    owner_id: str = Depends(precheck_ai_generation),
+):
+    """Answer from the owner's library, or from ONE of their papers.
+
+    paper_id is optional and additive. When empty the behaviour is
+    exactly as before. When supplied it narrows retrieval to that one
+    paper — it never widens anything: the owner_id term below is applied
+    unconditionally either way, and paper_id is verified to belong to
+    this owner before it is used at all.
+    """
+    # Resolved OUTSIDE the generator so an unknown or non-owned paper is
+    # a clean pre-stream rejection rather than an SSE error frame.
+    scoped_paper_id = ""
+    if paper_id:
+        scoped_paper_id = resolve_owned_paper_id(owner_id, paper_id)
+        if not scoped_paper_id:
+            # Same answer for "no such paper" and "not yours", so this
+            # cannot be used to probe another owner's library.
+            raise HTTPException(status_code=404, detail="Paper not found.")
+
 
     def stream():
 
@@ -305,9 +354,20 @@ def ask_stream(question: str, owner_id: str = Depends(precheck_ai_generation)):
             # identity above — never from any client-supplied value — and
             # is unconditionally merged into every query. There is no code
             # path here that lets a caller widen or omit this filter.
-            owner_filter = Filter(
-                must=[FieldCondition(key="owner_id", match=MatchValue(value=owner_id))]
-            )
+            # owner_id is applied unconditionally; the paper term is
+            # appended to it, never substituted for it. Narrowing only —
+            # a caller cannot use paper_id to reach outside their own
+            # library, because both conditions must hold.
+            must = [FieldCondition(key="owner_id", match=MatchValue(value=owner_id))]
+
+            if scoped_paper_id:
+                must.append(
+                    FieldCondition(
+                        key="paper_id", match=MatchValue(value=scoped_paper_id)
+                    )
+                )
+
+            owner_filter = Filter(must=must)
 
             results = client.query_points(
                 collection_name=COLLECTION_NAME,

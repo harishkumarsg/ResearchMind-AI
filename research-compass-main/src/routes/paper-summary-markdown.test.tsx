@@ -42,6 +42,15 @@ vi.mock("@/lib/api", () => ({
   summarizePaper: vi.fn(),
   deletePaper: vi.fn(),
   retryUnlessRateLimited: () => false,
+  // The page now also renders the Phase 2A workspace (viewer + ask
+  // panel). This suite is about Summary markdown, so both are stubbed
+  // to inert values rather than exercised here.
+  getPaperFileUrl: vi.fn().mockRejectedValue(new Error("not used in this suite")),
+  streamAskQuestion: vi.fn(),
+  partitionCitations: (c: any[]) => ({
+    cited: c.filter((x) => x.cited),
+    alsoRetrieved: c.filter((x) => !x.cited),
+  }),
 }));
 
 import { Route } from "@/routes/paper.$paperName";

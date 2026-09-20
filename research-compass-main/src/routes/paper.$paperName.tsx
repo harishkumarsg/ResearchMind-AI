@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ReactMarkdown from "react-markdown";
+import { PaperViewer } from "@/components/paper-viewer";
+import { PaperAskPanel } from "@/components/paper-ask-panel";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getPaperDetails, summarizePaper, deletePaper, retryUnlessRateLimited } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -34,6 +36,10 @@ function PaperDetailsPage() {
   const qc = useQueryClient();
   const { user } = useAuth();
   const userId = user?.id;
+
+  // The workspace's current page. Lifted here so a citation in the AI
+  // panel can drive the viewer.
+  const [page, setPage] = useState(1);
 
   const [summary, setSummary] = useState("");
   const [summarizing, setSummarizing] = useState(false);
@@ -129,6 +135,26 @@ function PaperDetailsPage() {
           <AlertCircle className="h-4 w-4 shrink-0" />
           {(error as Error).message}
         </div>
+      )}
+
+      {details && details.paper_id && (
+        <section aria-label="Paper workspace" className="mb-10">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
+            {/* Viewer — full width on narrow screens, side-by-side on wide */}
+            <div className="min-w-0 lg:h-[min(78vh,900px)]">
+              <PaperViewer
+                paperId={details.paper_id}
+                page={page}
+                onPageChange={setPage}
+              />
+            </div>
+
+            {/* AI panel */}
+            <div className="min-w-0 lg:h-[min(78vh,900px)] lg:overflow-y-auto">
+              <PaperAskPanel paperId={details.paper_id} onCitationClick={setPage} />
+            </div>
+          </div>
+        </section>
       )}
 
       {details && (

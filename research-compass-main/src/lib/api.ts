@@ -301,13 +301,18 @@ export async function streamAskQuestion(
   question: string,
   onEvent: (event: AskStreamEvent) => void,
   signal?: AbortSignal,
+  paperId?: string,
 ): Promise<void> {
   const token = await getAccessToken();
   if (!token) {
     throw new AuthenticationRequiredError();
   }
 
-  const url = `${API_BASE_URL}/ask-stream?question=${encodeURIComponent(question)}`;
+  // paper_id narrows retrieval to one paper. The server still applies
+  // its own owner filter unconditionally and verifies the paper belongs
+  // to the caller, so this parameter can only narrow, never widen.
+  const scope = paperId ? `&paper_id=${encodeURIComponent(paperId)}` : "";
+  const url = `${API_BASE_URL}/ask-stream?question=${encodeURIComponent(question)}${scope}`;
   const response = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
     signal,
@@ -458,6 +463,29 @@ export async function getLatestReport(): Promise<ResearchResult | null> {
     sources_used: citations.length,
     chunks_used: null,
   };
+}
+
+/**
+ * The owner's own PDF, as an object URL for an <iframe>.
+ *
+ * The `papers` bucket is private and stays private: there is no signed
+ * URL and no public object. The bytes come over the authenticated API
+ * and become an in-memory blob URL, so the Storage path is never seen by
+ * the browser. Callers MUST revoke the returned URL when done.
+ */
+export async function getPaperFileUrl(paperId: string): Promise<string> {
+  const response = await authFetch(
+    `${API_BASE_URL}/paper-file?paper_id=${encodeURIComponent(paperId)}`,
+  );
+
+  if (response.status === 404) {
+    throw new Error("Paper not found.");
+  }
+  if (!response.ok) {
+    throw new Error("The paper file is currently unavailable.");
+  }
+
+  return URL.createObjectURL(await response.blob());
 }
 
 export async function getPaperDetails(paperName: string): Promise<PaperDetails> {
