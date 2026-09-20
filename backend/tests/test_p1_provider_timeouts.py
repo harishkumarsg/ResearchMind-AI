@@ -700,11 +700,23 @@ class TestSuccessfulCallsUnchanged(EndpointTestCase):
         self.assertEqual(body["status"], "success")
         self.assertEqual(body["comparison"], "| table |")
 
-    def test_an_unclassified_endpoint_error_keeps_its_existing_shape(self):
+    def test_an_unclassified_endpoint_error_is_sanitized(self):
+        """Previously asserted that str(e) reached the client verbatim.
+
+        That was the documented behaviour at the time, and it is what
+        leaked a driver's wording about schema internals. The endpoints
+        now return an authored message instead; the raw text still goes
+        to the server log. This test's purpose is unchanged — it pins
+        what an UNCLASSIFIED error does — only the expectation moved.
+        """
+        from app.core.providers import INTERNAL_ERROR, internal_error_payload
+
         with patch("app.api.search.encode_query", side_effect=RuntimeError("application failure")):
             resp = self.client.get("/search", params={"query": "x"})
 
-        self.assertEqual(resp.json(), {"status": "error", "message": "application failure"})
+        self.assertEqual(resp.json(), internal_error_payload())
+        self.assertEqual(resp.json()["code"], INTERNAL_ERROR)
+        self.assertNotIn("application failure", resp.text)
 
 
 # ======================================================================

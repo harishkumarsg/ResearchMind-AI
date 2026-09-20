@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from qdrant_client.models import FieldCondition, Filter, MatchValue
 
 from app.core.auth import get_current_owner_id
-from app.core.providers import classify_provider_error
+from app.core.providers import classify_provider_error, internal_error_payload
 from app.rag.embedder import encode_query
 from app.rag.vector_store import COLLECTION_NAME, client
 from app.rag.reranker import rerank_results
@@ -212,11 +212,4 @@ def search(query: str, owner_id: str = Depends(get_current_owner_id)):
         if provider_failure is not None:
             return provider_failure.to_payload()
 
-        return {
-
-            "status":
-            "error",
-
-            "message":
-            str(e)
-        }
+        return internal_error_payload()

@@ -7,7 +7,7 @@ from sqlalchemy import func
 from app.core.limits import UsageLimitError
 from app.db.models import Paper
 from app.db.session import session_scope
-from app.core.providers import classify_provider_error
+from app.core.providers import classify_provider_error, internal_error_payload
 from app.core.usage_guard import charge_ai_unit, precheck_ai_generation
 from app.rag.embedder import encode_query
 from app.rag.vector_store import COLLECTION_NAME, client
@@ -630,11 +630,4 @@ Context:
         if provider_failure is not None:
             return provider_failure.to_payload()
 
-        return {
-
-            "status":
-            "error",
-
-            "message":
-            str(e)
-        }
+        return internal_error_payload()

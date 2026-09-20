@@ -125,15 +125,43 @@ PROVIDER_UNAVAILABLE = "provider_unavailable"
 PROVIDER_RATE_LIMITED = "provider_rate_limited"
 GENERATION_INCOMPLETE = "generation_incomplete"
 
+#: Not a provider failure, and deliberately NOT produced by
+#: classify_provider_error(): this is what an endpoint returns for an
+#: exception this application did not classify at all. Those used to
+#: reach the client as str(e), which can carry a driver's wording about
+#: schema internals. The full text still reaches the server log; only the
+#: client-facing body is neutral.
+INTERNAL_ERROR = "internal_error"
+
 #: Authored here, never derived from an exception. The rate-limit wording
 #: deliberately says "rate-limited" so the frontend's existing rate-limit
-#: recognition still applies; the other two deliberately do not.
+#: recognition still applies; the others deliberately do not — an internal
+#: fault is not something the user can wait out.
 _MESSAGES = {
     PROVIDER_TIMEOUT: "The research service took too long to respond. Please try again.",
     PROVIDER_UNAVAILABLE: "The research service is temporarily unavailable. Please try again shortly.",
     PROVIDER_RATE_LIMITED: "The research service is rate-limited right now. Please wait a moment and try again.",
     GENERATION_INCOMPLETE: "The answer could not be completed. Please try again.",
+    INTERNAL_ERROR: "Something went wrong on our side. Please try again.",
 }
+
+
+def internal_error_payload() -> dict:
+    """The client-facing body for an unclassified exception.
+
+    A plain dict rather than a ProviderFailure subclass on purpose: this
+    is an application fault, not a provider one, and making it an
+    exception type would let it be caught by the
+    `isinstance(exc, ProviderFailure)` branches that exist to recognise
+    genuine provider trouble. The shape matches
+    ProviderFailure.to_payload() so the five endpoints keep one response
+    contract.
+    """
+    return {
+        "status": "error",
+        "code": INTERNAL_ERROR,
+        "message": _MESSAGES[INTERNAL_ERROR],
+    }
 
 
 class ProviderFailure(Exception):

@@ -274,7 +274,7 @@ class TestReportPersistenceFailureHandling(ReportPersistenceTestCase):
             body = self.client.get("/research", params={"query": "q"}).json()
 
         self.assertEqual(body["status"], "error")
-        self.assertIn("database unavailable", body["message"])
+        self.assertEqual(body["code"], "internal_error")
         self.assertEqual(self.stored_reports(), [])
 
 
