@@ -38,6 +38,10 @@ from app.api.export_report import (
     router as export_router
 )
 
+from app.api.latest_report import (
+    router as latest_report_router
+)
+
 from app.api.stats import (
     router as stats_router
 )
@@ -165,6 +169,11 @@ app.include_router(
 app.include_router(
     export_router,
     tags=["Export"]
+)
+
+app.include_router(
+    latest_report_router,
+    tags=["Reports"]
 )
 
 app.include_router(

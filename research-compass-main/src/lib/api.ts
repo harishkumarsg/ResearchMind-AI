@@ -181,7 +181,12 @@ export interface ResearchResult {
   query: string;
   report: string;
   citations: Citation[];
-  chunks_used: number;
+  /**
+   * Null for a report restored from storage: the chunk count belongs to
+   * the generation run and is not kept with the row, so the restored
+   * view omits it rather than inventing a number.
+   */
+  chunks_used: number | null;
   sources_used: number;
 }
 
@@ -421,6 +426,38 @@ export async function generateReport(query: string): Promise<ResearchResult> {
     throwForErrorBody(data, "Report generation failed");
   }
   return data;
+}
+
+/**
+ * The owner's most recent stored report, or null if they have none.
+ *
+ * Read-only: it never generates, so restoring the Reports page after a
+ * refresh costs no AI quota and creates no new report row.
+ */
+export async function getLatestReport(): Promise<ResearchResult | null> {
+  const response = await authFetch(`${API_BASE_URL}/latest-report`);
+
+  // A new account with no report yet is an empty state, not an error.
+  if (response.status === 404) {
+    return null;
+  }
+
+  const data = await response.json();
+  if (data.status !== "success") {
+    throwForErrorBody(data, "Failed to load saved report");
+  }
+
+  const citations = data.citations ?? [];
+
+  return {
+    status: data.status,
+    query: data.query,
+    report: data.report_markdown,
+    citations,
+    // len(citations) is exactly how /research computes sources_used.
+    sources_used: citations.length,
+    chunks_used: null,
+  };
 }
 
 export async function getPaperDetails(paperName: string): Promise<PaperDetails> {

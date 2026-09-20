@@ -25,6 +25,9 @@ export const queryKeys = {
 
   stats: (userId?: string) => ["stats", userId] as const,
 
+  /** The owner's most recent stored report, restored on page load. */
+  latestReport: (userId?: string) => ["latest-report", userId] as const,
+
   paperDetails: (userId: string | undefined, paperName: string) =>
     ["paper-details", userId, paperName] as const,
 

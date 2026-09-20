@@ -3,8 +3,11 @@ import { AppShell } from "@/components/app-shell";
 import { AlertCircle, ArrowUp, Download, FileText, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
-import { generateReport, exportReport } from "@/lib/api";
+import { generateReport, exportReport, getLatestReport } from "@/lib/api";
+import { queryKeys } from "@/lib/query-keys";
+import { useAuth } from "@/lib/auth-context";
 import type { ResearchResult } from "@/lib/api";
 
 export const Route = createFileRoute("/reports")({
@@ -19,6 +22,27 @@ function ReportsPage() {
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
 
+  const { user } = useAuth();
+  const userId = user?.id;
+  const qc = useQueryClient();
+
+  // The durable row /research already wrote. Without this the report
+  // lived only in `result`, so a refresh showed an empty form while the
+  // report sat in Postgres. Read-only: no generation, no quota, no new
+  // row.
+  const { data: savedReport } = useQuery({
+    queryKey: queryKeys.latestReport(userId),
+    queryFn: getLatestReport,
+    staleTime: 30_000,
+    // Never fetch before the session resolves, or the call throws
+    // AuthenticationRequiredError and burns retries.
+    enabled: !!userId,
+  });
+
+  // A report generated in this session wins over the stored one; on a
+  // fresh load `result` is null and the stored report is shown.
+  const report = result ?? savedReport ?? null;
+
   const handleGenerate = async () => {
     if (!query.trim()) return;
     setLoading(true);
@@ -27,6 +51,9 @@ function ReportsPage() {
     try {
       const data = await generateReport(query);
       setResult(data);
+      // The new row is now the owner's latest, so the restore cache must
+      // not keep serving the previous one.
+      qc.setQueryData(queryKeys.latestReport(userId), data);
     } catch (err: any) {
       setError(err.message || "Report generation failed.");
     } finally {
@@ -50,7 +77,7 @@ function ReportsPage() {
       title="Literature Review"
       subtitle="Generate a research report from your indexed papers"
       actions={
-        result && (
+        report && !loading && (
           <Button size="sm" onClick={handleExport} disabled={exporting}>
             {exporting ? (
               <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
@@ -121,17 +148,18 @@ function ReportsPage() {
       )}
 
       {/* Report */}
-      {result && !loading && (
+      {report && !loading && (
         <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_280px]">
           <article className="rounded-2xl border border-border bg-surface p-10">
             <div className="text-[11px] font-mono uppercase tracking-[0.18em] text-muted-foreground">
               Literature Review
             </div>
             <h1 className="mt-3 text-2xl font-medium leading-snug tracking-tight">
-              {result.query}
+              {report.query}
             </h1>
             <div className="mt-2 text-xs text-muted-foreground">
-              {result.sources_used} sources · {result.chunks_used} chunks
+              {report.sources_used} sources
+              {report.chunks_used !== null && ` · ${report.chunks_used} chunks`}
             </div>
             <div className="mt-8 prose prose-sm max-w-none text-foreground/90
               prose-headings:font-semibold prose-headings:tracking-tight prose-headings:text-foreground
@@ -140,7 +168,7 @@ function ReportsPage() {
               prose-li:text-[15px] prose-li:leading-[1.75]
               prose-strong:text-foreground prose-strong:font-semibold
               prose-ul:my-3 prose-ol:my-3">
-              <ReactMarkdown>{result.report}</ReactMarkdown>
+              <ReactMarkdown>{report.report}</ReactMarkdown>
             </div>
           </article>
 
@@ -149,7 +177,7 @@ function ReportsPage() {
               Citations
             </div>
             <div className="mt-3 space-y-2.5">
-              {result.citations.map((c, i) => (
+              {report.citations.map((c, i) => (
                 <div
                   key={i}
                   className="rounded-lg border border-border bg-surface p-3"
