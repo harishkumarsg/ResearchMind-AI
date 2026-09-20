@@ -13,6 +13,7 @@ import {
   User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import ReactMarkdown from "react-markdown";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getPaperDetails, summarizePaper, deletePaper, retryUnlessRateLimited } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -209,9 +210,15 @@ function PaperDetailsPage() {
                     <Sparkles className="h-4 w-4" />
                     AI Summary
                   </div>
-                  <p className="whitespace-pre-wrap text-[15px] leading-[1.75] text-foreground/90">
-                    {summary}
-                  </p>
+                  <div className="prose prose-sm max-w-none text-foreground/90
+                    prose-headings:font-semibold prose-headings:tracking-tight prose-headings:text-foreground
+                    prose-h3:text-lg prose-h4:text-base
+                    prose-p:leading-[1.75] prose-p:text-[15px]
+                    prose-li:text-[15px] prose-li:leading-[1.75]
+                    prose-strong:text-foreground prose-strong:font-semibold
+                    prose-ul:my-3 prose-ol:my-3">
+                    <ReactMarkdown>{summary}</ReactMarkdown>
+                  </div>
                 </div>
               )}
             </div>
