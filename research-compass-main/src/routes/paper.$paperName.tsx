@@ -20,6 +20,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getPaperDetails, summarizePaper, deletePaper, retryUnlessRateLimited } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { queryKeys } from "@/lib/query-keys";
+import { useRequireAuth } from "@/lib/require-auth";
 import { useState } from "react";
 import type { ReactNode } from "react";
 
@@ -31,6 +32,9 @@ export const Route = createFileRoute("/paper/$paperName")({
 });
 
 function PaperDetailsPage() {
+  // Signed-out visitors are sent to the public landing page.
+  useRequireAuth();
+
   const { paperName } = Route.useParams();
   const navigate = useNavigate();
   const qc = useQueryClient();

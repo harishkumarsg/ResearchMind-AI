@@ -10,6 +10,7 @@ import {
   type AskStreamEvent,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { useRequireAuth } from "@/lib/require-auth";
 
 export const Route = createFileRoute("/ask")({
   head: () => ({ meta: [{ title: "Ask AI · ResearchMind" }] }),
@@ -26,6 +27,9 @@ interface Citation {
 type Stage = "idle" | "searching" | "reranking" | "generating" | "done" | "error";
 
 function AskPage() {
+  // Signed-out visitors are sent to the public landing page.
+  useRequireAuth();
+
   const { session, isLoading: authLoading, signInWithGoogle } = useAuth();
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");

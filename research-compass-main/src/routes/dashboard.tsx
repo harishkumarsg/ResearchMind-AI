@@ -15,6 +15,7 @@ import { useQuery } from "@tanstack/react-query";
 import { getDashboardStats } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { queryKeys } from "@/lib/query-keys";
+import { useRequireAuth } from "@/lib/require-auth";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({ meta: [{ title: "Workspace · ResearchMind" }] }),
@@ -22,6 +23,9 @@ export const Route = createFileRoute("/dashboard")({
 });
 
 function Dashboard() {
+  // Signed-out visitors are sent to the public landing page.
+  useRequireAuth();
+
   const { user } = useAuth();
   const userId = user?.id;
 

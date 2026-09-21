@@ -13,8 +13,15 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
+const navigate = vi.hoisted(() => vi.fn());
+
 vi.mock("@tanstack/react-router", () => ({
   createFileRoute: () => (options: any) => ({ options }),
+  // Protected routes now call useRequireAuth(), which calls
+  // useNavigate(). The auth fixture below is signed IN, so the guard
+  // resolves without redirecting and these tests exercise the page
+  // exactly as before.
+  useNavigate: () => navigate,
 }));
 
 vi.mock("@/lib/auth-context", () => ({

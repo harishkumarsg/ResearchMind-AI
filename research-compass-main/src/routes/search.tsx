@@ -14,6 +14,7 @@ import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { RateLimitError, searchPapers } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { queryKeys } from "@/lib/query-keys";
+import { useRequireAuth } from "@/lib/require-auth";
 
 // Every /search call embeds the query with Voyage, which is rate-limited, so
 // the request waits for typing to pause instead of firing on each keystroke.
@@ -27,6 +28,9 @@ export const Route = createFileRoute("/search")({
 });
 
 function SearchPage() {
+  // Signed-out visitors are sent to the public landing page.
+  useRequireAuth();
+
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query, SEARCH_DEBOUNCE_MS);
   const isDebouncing = query !== debouncedQuery;

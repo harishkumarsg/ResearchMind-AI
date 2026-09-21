@@ -8,6 +8,7 @@ import { comparePapers, getPapers } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { queryKeys } from "@/lib/query-keys";
 import type { CompareResult } from "@/lib/api";
+import { useRequireAuth } from "@/lib/require-auth";
 
 export const Route = createFileRoute("/compare")({
   head: () => ({ meta: [{ title: "Compare · ResearchMind" }] }),
@@ -48,6 +49,9 @@ function parseMarkdownTable(
 }
 
 function ComparePage() {
+  // Signed-out visitors are sent to the public landing page.
+  useRequireAuth();
+
   const [paper1, setPaper1] = useState("");
   const [paper2, setPaper2] = useState("");
   const [result, setResult] = useState<CompareResult | null>(null);

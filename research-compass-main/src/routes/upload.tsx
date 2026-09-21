@@ -4,6 +4,7 @@ import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { AlertCircle, CheckCircle2, FileText, Loader2, Upload, X } from "lucide-react";
 import { uploadPaper, indexDocuments, describeIndexResult } from "@/lib/api";
+import { useRequireAuth } from "@/lib/require-auth";
 
 export const Route = createFileRoute("/upload")({
   head: () => ({ meta: [{ title: "Upload · ResearchMind" }] }),
@@ -21,6 +22,9 @@ interface FileEntry {
 type Stage = "idle" | "uploading" | "indexing" | "complete" | "error";
 
 function UploadPage() {
+  // Signed-out visitors are sent to the public landing page.
+  useRequireAuth();
+
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [stage, setStage] = useState<Stage>("idle");
   const [indexMessage, setIndexMessage] = useState("");

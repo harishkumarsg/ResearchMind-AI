@@ -9,6 +9,7 @@ import { generateReport, exportReport, getLatestReport } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 import { useAuth } from "@/lib/auth-context";
 import type { ResearchResult } from "@/lib/api";
+import { useRequireAuth } from "@/lib/require-auth";
 
 export const Route = createFileRoute("/reports")({
   head: () => ({ meta: [{ title: "Reports · ResearchMind" }] }),
@@ -16,6 +17,9 @@ export const Route = createFileRoute("/reports")({
 });
 
 function ReportsPage() {
+  // Signed-out visitors are sent to the public landing page.
+  useRequireAuth();
+
   const [query, setQuery] = useState("");
   const [result, setResult] = useState<ResearchResult | null>(null);
   const [loading, setLoading] = useState(false);
