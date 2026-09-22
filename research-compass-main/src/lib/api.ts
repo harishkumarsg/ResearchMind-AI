@@ -560,3 +560,86 @@ export async function deletePaper(paperName: string): Promise<void> {
     throw new Error(data.detail || "Delete failed");
   }
 }
+
+// ============================================================
+// Paper Intelligence (read path)
+// ============================================================
+
+/** One reference into the paper. Identity is the (page, chunk_id) PAIR —
+ *  chunk_id is an index within its page, so it is not unique on its own. */
+export interface IntelligenceEvidence {
+  page: number;
+  chunk_id: number;
+  quote: string | null;
+}
+
+export interface IntelligenceSection {
+  status: "answered" | "not_specified";
+  summary: string | null;
+  evidence: IntelligenceEvidence[];
+}
+
+/** The ten sections, in the order they are generated and displayed. */
+export const INTELLIGENCE_SECTION_ORDER = [
+  "research_problem",
+  "research_objective",
+  "methodology",
+  "dataset",
+  "experimental_setup",
+  "evaluation_metrics",
+  "key_results",
+  "contributions",
+  "limitations",
+  "reproducibility",
+] as const;
+
+export type IntelligenceSectionName = (typeof INTELLIGENCE_SECTION_ORDER)[number];
+
+export type PaperIntelligenceSections = Record<IntelligenceSectionName, IntelligenceSection>;
+
+export interface PaperIntelligenceResult {
+  paper_id: string;
+  paper: string;
+  intelligence: PaperIntelligenceSections;
+  generated_at: string;
+  model: string;
+  schema_version: string;
+  superseded: boolean;
+}
+
+/**
+ * The stored analysis for one of the caller's own papers.
+ *
+ * Returns null for "nothing generated yet" — an empty state, not an
+ * error, and deliberately NOT a trigger to generate one. Reading is a
+ * database lookup on the server; it makes no provider call and spends no
+ * generation allowance, so it is safe on every page load.
+ *
+ * A paper that does not exist and a paper belonging to someone else both
+ * surface as 404 and are reported identically, matching the rest of the
+ * paper APIs.
+ */
+export async function getPaperIntelligence(
+  paperId: string,
+): Promise<PaperIntelligenceResult | null> {
+  const response = await authFetch(
+    `${API_BASE_URL}/paper-intelligence?paper_id=${encodeURIComponent(paperId)}`,
+  );
+
+  if (response.status === 404) {
+    throw new Error("Paper not found.");
+  }
+
+  const data = await response.json();
+
+  // The owner's paper, with no analysis stored yet.
+  if (data.status === "not_generated") {
+    return null;
+  }
+
+  if (data.status !== "success") {
+    throwForErrorBody(data, "Could not load the paper analysis");
+  }
+
+  return data as PaperIntelligenceResult;
+}

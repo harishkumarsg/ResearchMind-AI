@@ -35,6 +35,19 @@ export const queryKeys = {
   paperFile: (userId: string | undefined, paperId: string) =>
     ["paper-file", userId, paperId] as const,
 
+  /**
+   * One paper's stored Paper Intelligence.
+   *
+   * Keyed on BOTH the authenticated user and the paper: the user id is
+   * what stops one account's analysis being served from cache to the
+   * next, and the paper id is what stops one paper's analysis appearing
+   * under another. Its own namespace rather than a child of
+   * ["paper-details", ...] — React Query matches by prefix, and these
+   * two hold different shapes.
+   */
+  paperIntelligence: (userId: string | undefined, paperId: string) =>
+    ["paper-intelligence", userId, paperId] as const,
+
   stats: (userId?: string) => ["stats", userId] as const,
 
   /** The owner's most recent stored report, restored on page load. */

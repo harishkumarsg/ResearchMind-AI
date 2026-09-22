@@ -44,7 +44,7 @@ decides what survives.
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response, status
 from qdrant_client.models import FieldCondition, Filter, MatchValue
 
 from app.agents.qa_agent import GROQ_MODEL, REFUSAL, generate
@@ -52,7 +52,11 @@ from app.api.paper_file import resolve_owned_paper
 from app.api.summarize_paper import select_within_budget
 from app.core.limits import UsageLimitError
 from app.core.providers import classify_provider_error, internal_error_payload
-from app.core.usage_guard import charge_ai_unit, precheck_ai_generation
+from app.core.usage_guard import (
+    charge_ai_unit,
+    guard_cheap_read,
+    precheck_ai_generation,
+)
 from app.db.session import session_scope
 from app.rag.vector_store import COLLECTION_NAME, client
 from app.services.intelligence_schema import (
@@ -61,7 +65,11 @@ from app.services.intelligence_schema import (
     build_allowlist,
     validate_intelligence,
 )
-from app.services.paper_intelligence_store import PaperNotOwned, save_intelligence
+from app.services.paper_intelligence_store import (
+    PaperNotOwned,
+    get_intelligence,
+    save_intelligence,
+)
 
 router = APIRouter()
 
@@ -96,6 +104,19 @@ NOT_FOUND_MESSAGE = "Paper not found."
 #: paper and is actionable — re-index it.
 NOT_INDEXED_MESSAGE = (
     "This paper has no indexed content yet. Index it and try again."
+)
+
+#: The paper is this owner's, but no intelligence has been generated for
+#: it yet. Deliberately NOT an error: an empty state is the correct answer
+#: for a paper nobody has analysed, and rendering it as a failure would
+#: push the UI toward generating one automatically.
+NOT_GENERATED_MESSAGE = "No analysis has been generated for this paper yet."
+
+#: The stored row exists but no longer parses — a schema_version drift or
+#: a hand-edited row. Authored here; the stored text is never rendered.
+UNREADABLE_MESSAGE = (
+    "The stored analysis for this paper could not be read. "
+    "Generating it again will replace it."
 )
 
 #: A generation that produced nothing usable. Authored here; the model's
@@ -349,7 +370,97 @@ INTELLIGENCE_QUESTION = (
 
 
 # ----------------------------------------------------------------------
-# Endpoint
+# Read endpoint
+# ----------------------------------------------------------------------
+@router.get("/paper-intelligence")
+def read_paper_intelligence(
+    paper_id: str,
+    response: Response,
+    owner_id: str = Depends(guard_cheap_read),
+):
+    """The stored analysis for this owner's paper.
+
+    DATABASE ONLY. No Groq, no Voyage, no Qdrant, no Storage — reading an
+    analysis that already exists must never cost a provider call, and a
+    read path that could generate would turn every page load into a
+    billable request.
+
+    CHEAP_READ rather than AI_GENERATION: this is a burst-guarded read
+    with no daily allowance, exactly like /latest-report and
+    /export-report.
+
+    Three outcomes, deliberately distinct:
+
+      404  — the paper does not exist, is malformed, or belongs to
+             someone else. One response for all three, matching
+             /paper-file, so the wording cannot be used to probe whether
+             another user holds a given id.
+      200 status=not_generated — the paper IS this owner's, but nothing
+             has been analysed yet. An empty state, not an error.
+      200 status=success — the stored object.
+
+    owner_id is the verified JWT `sub` from guard_cheap_read. A client
+    cannot supply it: there is no owner_id parameter on this route, and
+    the store filters on the value this dependency returned.
+    """
+    try:
+        resolved = resolve_paper(owner_id, paper_id)
+
+        if resolved is None:
+            response.status_code = status.HTTP_404_NOT_FOUND
+            return {"status": "error", "message": NOT_FOUND_MESSAGE}
+
+        resolved_paper_id, paper_title = resolved
+
+        # Owner-scoped by construction: get_intelligence filters on both
+        # owner_id and paper_id, so another owner's row cannot match.
+        stored = get_intelligence(owner_id, resolved_paper_id)
+
+        if stored is None:
+            return {
+                "status": "not_generated",
+                "paper_id": resolved_paper_id,
+                "paper": paper_title,
+                "message": NOT_GENERATED_MESSAGE,
+            }
+
+        return {
+            "status": "success",
+            "paper_id": resolved_paper_id,
+            "paper": paper_title,
+            "intelligence": stored.intelligence.model_dump(mode="json"),
+            "generated_at": stored.generated_at.isoformat(),
+            "model": stored.model,
+            "schema_version": stored.schema_version,
+            "superseded": stored.superseded,
+        }
+
+    except IntelligenceValidationError as e:
+        # The stored JSON no longer matches the schema. Reported as a
+        # readable state rather than a 500, and the row is left alone —
+        # repairing it here would be exactly the kind of silent rewrite
+        # the validator exists to prevent.
+        print(
+            f"[paper-intelligence] unreadable stored row code={e.code} "
+            f"paper={paper_id}"
+        )
+        return {"status": "error", "code": e.code, "message": UNREADABLE_MESSAGE}
+
+    except UsageLimitError:
+        raise
+
+    except Exception as e:
+        print(f"Paper Intelligence Read Error: {str(e)}")
+
+        provider_failure = classify_provider_error(e)
+        if provider_failure is not None:
+            return provider_failure.to_payload()
+
+        return internal_error_payload()
+
+
+# ----------------------------------------------------------------------
+# Generation endpoint
 # ----------------------------------------------------------------------
 @router.post("/paper-intelligence")
 def paper_intelligence(

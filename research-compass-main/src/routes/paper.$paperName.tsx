@@ -16,6 +16,8 @@ import { Button } from "@/components/ui/button";
 import ReactMarkdown from "react-markdown";
 import { PaperViewer } from "@/components/paper-viewer";
 import { PaperAskPanel } from "@/components/paper-ask-panel";
+import { PaperIntelligencePanel } from "@/components/paper-intelligence-panel";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getPaperDetails, summarizePaper, deletePaper, retryUnlessRateLimited } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -153,9 +155,34 @@ function PaperDetailsPage() {
               />
             </div>
 
-            {/* AI panel */}
-            <div className="min-w-0 lg:h-[min(78vh,900px)] lg:overflow-y-auto">
-              <PaperAskPanel paperId={details.paper_id} onCitationClick={setPage} />
+            {/* AI panel — Intelligence and Ask share the column beside
+                the viewer. Tabs rather than stacking: both want the full
+                height, and both drive the same viewer page state. */}
+            <div className="flex min-w-0 flex-col lg:h-[min(78vh,900px)]">
+              <Tabs defaultValue="intelligence" className="flex min-h-0 flex-1 flex-col">
+                <TabsList className="w-full">
+                  <TabsTrigger value="intelligence" className="flex-1">
+                    Intelligence
+                  </TabsTrigger>
+                  <TabsTrigger value="ask" className="flex-1">
+                    Ask
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent
+                  value="intelligence"
+                  className="mt-3 min-h-0 flex-1 lg:overflow-y-auto"
+                >
+                  <PaperIntelligencePanel
+                    paperId={details.paper_id}
+                    onEvidenceClick={setPage}
+                  />
+                </TabsContent>
+
+                <TabsContent value="ask" className="mt-3 min-h-0 flex-1 lg:overflow-y-auto">
+                  <PaperAskPanel paperId={details.paper_id} onCitationClick={setPage} />
+                </TabsContent>
+              </Tabs>
             </div>
           </div>
         </section>
