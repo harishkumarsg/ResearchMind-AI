@@ -16,6 +16,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     Uuid,
     JSON,
 )
@@ -135,3 +136,53 @@ class UsageCounter(Base):
     metric = Column(String(40), primary_key=True)
     count = Column(Integer, nullable=False, default=0)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
+
+
+class PaperIntelligenceRow(Base):
+    """One current structured Paper Intelligence object per owned paper
+    (migration 0005).
+
+    Named ...Row rather than PaperIntelligence because that name is
+    already taken, by the Pydantic model in
+    app/services/intelligence_schema.py that defines what may go in the
+    `intelligence` column. Keeping them distinct means `PaperIntelligence`
+    unambiguously means "the validated object" everywhere in the
+    codebase, and a module can import both without aliasing.
+
+    `intelligence` is the serialized, ALREADY-VALIDATED object. Plain
+    JSON here and jsonb in the migration — the same split reports.citations
+    uses, so the column is native jsonb in production and still works
+    against the offline SQLite harness.
+
+    No index=True on owner_id: the UNIQUE(owner_id, paper_id) constraint
+    is backed by an index with owner_id leftmost, so a second one would
+    be redundant. Kept in step with 0005, which omits it for that reason.
+    """
+
+    __tablename__ = "paper_intelligence"
+
+    __table_args__ = (
+        UniqueConstraint(
+            "owner_id", "paper_id", name="paper_intelligence_owner_paper_key"
+        ),
+    )
+
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    # No ForeignKey to auth.users: that table is Supabase-managed and is
+    # not part of Base.metadata. The migration declares the real FK; this
+    # matches every other owner_id column in this file.
+    owner_id = Column(Uuid, nullable=False)
+    paper_id = Column(
+        Uuid, ForeignKey("papers.id", ondelete="CASCADE"), nullable=False
+    )
+    intelligence = Column(JSON, nullable=False)
+    # When the MODEL produced the object, as opposed to when the row was
+    # written. Supplied by the caller, never defaulted from the database
+    # clock, for the same reason usage_counters.day is not now()::date.
+    generated_at = Column(DateTime(timezone=True), nullable=False)
+    model = Column(Text, nullable=False)
+    schema_version = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    updated_at = Column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
