@@ -1,4 +1,5 @@
-import { AlertCircle, FileText, Loader2, ScanSearch } from "lucide-react";
+import { useState } from "react";
+import { AlertCircle, FileText, Loader2, Quote, ScanSearch } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import {
   getPaperIntelligence,
@@ -11,19 +12,41 @@ import { useAuth } from "@/lib/auth-context";
 import { queryKeys } from "@/lib/query-keys";
 
 /**
- * The stored Paper Intelligence for the paper the workspace is showing.
+ * The stored Paper Intelligence for the paper the workspace is showing,
+ * with an inline Evidence Inspector.
  *
  * READ ONLY, and deliberately so. This panel never generates: it fetches
  * what is already in the database, and a paper with no analysis yet shows
  * an empty state rather than silently triggering a billable generation on
  * page load. Reading costs no provider call on the server either.
  *
- * Evidence is rendered by PAGE, because a page is the thing a reader can
- * act on — clicking one drives the existing PDF viewer through the same
- * `onEvidenceClick` → `setPage` path the Ask panel already uses, so the
- * document is not re-fetched. chunk_id is part of evidence identity and
- * is kept in the data and in the accessible label, but it is not the
- * primary label: "chunk 2" means nothing to a reader.
+ * THE CHAIN THIS PANEL MAKES VISIBLE
+ * ----------------------------------
+ *   section  ->  evidence  ->  page  ->  PDF
+ *
+ * Clicking a page reference does two things at once: it drives the
+ * existing PDF viewer (unchanged, through the same `onEvidenceClick` ->
+ * `setPage` path the Ask panel uses) and it opens the inspector for that
+ * page. Every value the inspector shows comes from the ALREADY-LOADED
+ * response — there is no second request per click, so navigation stays
+ * instant and no provider is ever touched.
+ *
+ * WHY AN INLINE DISCLOSURE RATHER THAN A POPOVER
+ * ----------------------------------------------
+ * This panel lives in a scrollable column beside the viewer, and an
+ * anchored popover inside a scroll container fights its own positioning
+ * for no benefit. An inline block stays in flow, needs no portal and no
+ * animation, and keeps the evidence directly under the claim it
+ * supports — which is the relationship the inspector exists to show.
+ *
+ * TRUST BOUNDARY
+ * --------------
+ * The summary is the model's reading of the paper and is labelled as
+ * such. A quote, when one was persisted, is a verbatim passage the
+ * validator checked against the chunk it came from, and is labelled
+ * separately. Nothing here invents a passage: evidence with no stored
+ * quote shows its LOCATION only, never generated text dressed up as a
+ * quotation.
  */
 
 const SECTION_LABELS: Record<IntelligenceSectionName, string> = {
@@ -52,6 +75,62 @@ function citedPages(evidence: IntelligenceEvidence[]): number[] {
   return seen;
 }
 
+function EvidenceDetail({
+  page,
+  items,
+}: {
+  page: number;
+  items: IntelligenceEvidence[];
+}) {
+  const quoted = items.filter(
+    (item) => typeof item.quote === "string" && item.quote.trim().length > 0,
+  );
+
+  return (
+    <div
+      role="region"
+      aria-label={`Evidence on page ${page}`}
+      className="mt-3 rounded-lg border border-border bg-background/60 p-3"
+    >
+      <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+        <Quote className="h-3 w-3" aria-hidden="true" />
+        Evidence · Page {page}
+      </div>
+
+      {quoted.length > 0 ? (
+        <>
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Passage from the paper
+          </p>
+          {quoted.map((item, index) => (
+            <blockquote
+              key={`${item.page}-${item.chunk_id}-${index}`}
+              className="mt-1.5 border-l-2 border-border pl-3 text-[13px] leading-[1.7] text-foreground/85"
+            >
+              {item.quote}
+            </blockquote>
+          ))}
+        </>
+      ) : (
+        // No stored passage. Say so plainly — never synthesise one, and
+        // never reuse the model's summary as though the paper said it.
+        <p className="mt-2 text-[13px] leading-[1.7] text-muted-foreground">
+          Evidence location: Page {page}. No passage was stored for this
+          reference — open the page to read it in the paper.
+        </p>
+      )}
+
+      {/* Evidence identity, kept available but deliberately secondary:
+          (page, chunk_id) is what the reference IS, but "chunk 2" means
+          nothing to a reader. */}
+      <p className="mt-2 text-[10px] font-mono text-muted-foreground/70">
+        Reference:{" "}
+        {items.map((item) => `page ${item.page} · chunk ${item.chunk_id}`).join("  |  ")}
+      </p>
+    </div>
+  );
+}
+
 function SectionBlock({
   name,
   section,
@@ -61,8 +140,23 @@ function SectionBlock({
   section: IntelligenceSection;
   onEvidenceClick: (page: number) => void;
 }) {
+  const [openPage, setOpenPage] = useState<number | null>(null);
+
   const answered = section.status === "answered";
-  const pages = answered ? citedPages(section.evidence ?? []) : [];
+  const evidence = answered ? (section.evidence ?? []) : [];
+  const pages = citedPages(evidence);
+
+  const handlePageClick = (page: number) => {
+    // 1. Existing behaviour, unchanged and always first: drive the PDF.
+    onEvidenceClick(page);
+    // 2. Then reveal what that reference actually is.
+    setOpenPage((current) => (current === page ? null : page));
+  };
+
+  const openItems =
+    openPage === null
+      ? []
+      : evidence.filter((item) => Number(item.page) === openPage);
 
   return (
     <div className="rounded-xl border border-border bg-surface p-4">
@@ -71,9 +165,15 @@ function SectionBlock({
       </h3>
 
       {answered ? (
-        <p className="mt-1.5 text-[13px] leading-[1.7] text-foreground/85">
-          {section.summary}
-        </p>
+        <>
+          <p className="mt-1.5 text-[13px] leading-[1.7] text-foreground/85">
+            {section.summary}
+          </p>
+          {/* The summary is the model's reading, not the paper's words. */}
+          <p className="mt-1.5 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+            AI interpretation
+          </p>
+        </>
       ) : (
         // Not a failure: the paper genuinely does not state this.
         <p className="mt-1.5 text-[13px] italic text-muted-foreground">Not specified</p>
@@ -88,15 +188,20 @@ function SectionBlock({
             <button
               key={page}
               type="button"
-              onClick={() => onEvidenceClick(page)}
+              onClick={() => handlePageClick(page)}
               aria-label={`Go to page ${page}`}
-              className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-mono text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              aria-expanded={openPage === page}
+              className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-mono text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring aria-expanded:border-foreground/30 aria-expanded:text-foreground"
             >
               <FileText className="h-3 w-3" aria-hidden="true" />
               Page {page}
             </button>
           ))}
         </div>
+      )}
+
+      {openPage !== null && openItems.length > 0 && (
+        <EvidenceDetail page={openPage} items={openItems} />
       )}
     </div>
   );
@@ -129,7 +234,8 @@ export function PaperIntelligencePanel({
           Paper Intelligence
         </h2>
         <p className="mt-1 text-xs text-muted-foreground">
-          A structured read of this paper, with the pages each point came from.
+          A structured read of this paper. Select a page to see the evidence
+          behind a point.
         </p>
       </div>
 
