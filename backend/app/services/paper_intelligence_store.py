@@ -93,6 +93,19 @@ def _paper_uuid(paper_id) -> Optional[uuid.UUID]:
         return None
 
 
+def _as_utc(value: datetime) -> datetime:
+    """A stored timestamp as an aware UTC datetime.
+
+    SQLite, the offline test database, reads timestamptz values back
+    naive; every value this module writes is UTC. Without this, comparing
+    a stored stamp against an incoming one raises TypeError on the
+    offline suite and silently compares wall clocks in production.
+    """
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 @dataclass(frozen=True)
 class StoredIntelligence:
     """One persisted row, as plain values.
@@ -100,6 +113,13 @@ class StoredIntelligence:
     Not an ORM object: the session that produced it is already closed by
     the time this is returned, and the caller may hold it across a long
     model call.
+
+    `superseded` is False for every row this store wrote and True only
+    when save_intelligence() declined to overwrite a newer row — see the
+    staleness guard there. A caller that needs to know whether the object
+    it just generated is the one now stored reads this flag; a caller
+    that only wants the current intelligence can ignore it, because the
+    object returned is the current one either way.
     """
 
     paper_id: uuid.UUID
@@ -108,6 +128,7 @@ class StoredIntelligence:
     model: str
     schema_version: str
     updated_at: datetime
+    superseded: bool = False
 
 
 def _owns_paper(db, owner_uuid: uuid.UUID, paper_uuid: uuid.UUID) -> bool:
@@ -128,7 +149,9 @@ def _owns_paper(db, owner_uuid: uuid.UUID, paper_uuid: uuid.UUID) -> bool:
     ) is not None
 
 
-def _parse_stored(row: PaperIntelligenceRow) -> StoredIntelligence:
+def _parse_stored(
+    row: PaperIntelligenceRow, *, superseded: bool = False
+) -> StoredIntelligence:
     """Turn a row into plain values, re-checking the stored JSON.
 
     Structure only: the evidence allowlist that validate_intelligence()
@@ -156,6 +179,7 @@ def _parse_stored(row: PaperIntelligenceRow) -> StoredIntelligence:
         model=row.model,
         schema_version=row.schema_version,
         updated_at=row.updated_at,
+        superseded=superseded,
     )
 
 
@@ -209,6 +233,12 @@ def save_intelligence(
     is validate_intelligence(), so there is no path from raw model output
     to this table that skips the validator.
 
+    NOT last-writer-wins: if the stored row carries a `generated_at`
+    later than this one's, the write is dropped and the existing newer
+    row is returned with `superseded=True`. See the staleness guard
+    below. `generated_at` should therefore be stamped when the
+    generation run STARTS, so the ordering reflects request order.
+
     Raises PaperNotOwned if the paper is not this owner's.
     """
     if not isinstance(intelligence, PaperIntelligence):
@@ -240,8 +270,42 @@ def save_intelligence(
                     PaperIntelligenceRow.owner_id == owner_uuid,
                     PaperIntelligenceRow.paper_id == paper_uuid,
                 )
+                # Locked for the rest of the transaction so the staleness
+                # comparison below is a real compare-and-set. Without the
+                # lock two concurrent regenerations could both read the
+                # same old stamp, both judge themselves newer, and both
+                # write — which is the last-writer-wins behaviour this
+                # guard exists to prevent. A no-op on SQLite, as it is
+                # for the identical lock in chat_store.
+                .with_for_update()
                 .first()
             )
+
+            if row is not None and _as_utc(row.generated_at) > _as_utc(stamp):
+                # STALENESS GUARD.
+                #
+                # The stored row was generated more recently than the
+                # object being offered, so this write is stale and is
+                # dropped rather than applied. The case it exists for:
+                # a user triggers a slow regeneration, triggers a second
+                # one, the second finishes first, and the first then
+                # lands and silently reverts the paper to the older
+                # analysis.
+                #
+                # `generated_at` is stamped when a generation RUN BEGINS
+                # (see api/paper_intelligence.py), not when it finishes,
+                # so "newer" means "started from a more recent request" —
+                # which is the ordering a user perceives.
+                #
+                # Strictly greater, not >=: two runs that start inside
+                # one clock tick are genuinely indistinguishable, and
+                # refusing both would make an ordinary back-to-back
+                # regeneration fail.
+                #
+                # The existing, newer row is returned so the caller still
+                # receives the current intelligence, flagged so it can
+                # tell that its own result was not the one kept.
+                return _parse_stored(row, superseded=True)
 
             if row is None:
                 row = PaperIntelligenceRow(

@@ -46,6 +46,10 @@ from app.api.paper_file import (
     router as paper_file_router
 )
 
+from app.api.paper_intelligence import (
+    router as paper_intelligence_router
+)
+
 from app.api.stats import (
     router as stats_router
 )
@@ -183,6 +187,11 @@ app.include_router(
 app.include_router(
     paper_file_router,
     tags=["Paper File"]
+)
+
+app.include_router(
+    paper_intelligence_router,
+    tags=["Paper Intelligence"]
 )
 
 app.include_router(
