@@ -9,6 +9,7 @@ import { useAuth } from "@/lib/auth-context";
 import { queryKeys } from "@/lib/query-keys";
 import type { CompareResult } from "@/lib/api";
 import { useRequireAuth } from "@/lib/require-auth";
+import { PaperComparisonMatrix } from "@/components/paper-comparison-matrix";
 
 export const Route = createFileRoute("/compare")({
   head: () => ({ meta: [{ title: "Compare · ResearchMind" }] }),
@@ -244,6 +245,13 @@ function ComparePage() {
           </pre>
         </div>
       )}
+
+      {/* Grounded comparison, built from each paper's SAVED analysis.
+          Deliberately separate from the generated comparison above: that
+          one asks a model to compare two papers now, this one lays out
+          what was already validated and stored. It costs no provider
+          call and cannot rank anything. */}
+      <PaperComparisonMatrix />
     </AppShell>
   );
 }

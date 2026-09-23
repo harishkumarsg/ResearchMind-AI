@@ -18,6 +18,10 @@ vi.mock("@tanstack/react-router", () => ({
   createFileRoute: () => (options: any) => ({
     options,
     useParams: () => ({ paperName: "ETASR_18859.pdf" }),
+    // The workspace seeds its page from ?page=N (deep links from the
+    // comparison matrix). No search params in these fixtures, so the
+    // viewer opens on page 1 exactly as before.
+    useSearch: () => ({}),
   }),
   Link: ({ children, to }: any) => <a href={to}>{children}</a>,
   useNavigate: () => vi.fn(),
@@ -192,5 +196,29 @@ describe("AI Summary markdown rendering", () => {
 
     await waitFor(() => expect(getPaperDetails).toHaveBeenCalled());
     expect(screen.queryByRole("heading", { name: "Key Findings" })).not.toBeInTheDocument();
+  });
+});
+
+describe("Deep link to a cited page", () => {
+  // The comparison matrix links here as /paper/<title>?page=N. The rule
+  // is parsed by the route, so it is asserted directly rather than
+  // through a render.
+  const validate = (search: any) => (Route as any).options.validateSearch(search);
+
+  it("accepts a whole page number", () => {
+    expect(validate({ page: 7 })).toEqual({ page: 7 });
+    expect(validate({ page: "7" })).toEqual({ page: 7 });
+  });
+
+  it("drops anything that is not a usable page", () => {
+    // Dropped rather than coerced: the workspace then opens on page 1
+    // instead of somewhere arbitrary.
+    for (const bad of [{}, { page: 0 }, { page: -3 }, { page: "abc" }, { page: null }]) {
+      expect(validate(bad)).toEqual({});
+    }
+  });
+
+  it("floors a fractional page rather than rejecting it", () => {
+    expect(validate({ page: 3.9 })).toEqual({ page: 3 });
   });
 });

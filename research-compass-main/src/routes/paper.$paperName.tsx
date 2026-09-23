@@ -27,6 +27,18 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 
 export const Route = createFileRoute("/paper/$paperName")({
+  /**
+   * Optional `?page=N`, so another view can deep-link to a specific page
+   * of this paper — the comparison matrix sends a reader here from an
+   * evidence reference. Optional on purpose: every existing link to this
+   * route omits it and must keep working. Anything that is not a whole
+   * number of at least 1 is dropped rather than coerced, so a junk value
+   * lands on page 1 instead of somewhere arbitrary.
+   */
+  validateSearch: (search: Record<string, unknown>): { page?: number } => {
+    const raw = Number(search.page);
+    return Number.isFinite(raw) && raw >= 1 ? { page: Math.floor(raw) } : {};
+  },
   head: ({ params }) => ({
     meta: [{ title: `${params.paperName.replace(/_/g, " ")} · ResearchMind` }],
   }),
@@ -44,8 +56,10 @@ function PaperDetailsPage() {
   const userId = user?.id;
 
   // The workspace's current page. Lifted here so a citation in the AI
-  // panel can drive the viewer.
-  const [page, setPage] = useState(1);
+  // panel can drive the viewer, and seeded from ?page=N so a deep link
+  // from the comparison matrix opens on the cited page.
+  const { page: requestedPage } = Route.useSearch();
+  const [page, setPage] = useState(requestedPage ?? 1);
 
   const [summary, setSummary] = useState("");
   const [summarizing, setSummarizing] = useState(false);
