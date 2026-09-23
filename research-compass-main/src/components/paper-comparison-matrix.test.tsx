@@ -13,12 +13,36 @@
  * stored analysis.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within, cleanup } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
 const auth = vi.hoisted(() => ({ userId: "user-1" as string | undefined }));
 const links = vi.hoisted(() => [] as any[]);
+
+/**
+ * A minimal but REACTIVE stand-in for the router's search params.
+ *
+ * It has to notify subscribers, not just hold a value: the component
+ * reads its selection from the URL now, so a change that did not trigger
+ * a re-render would make every interaction test silently assert against
+ * a stale screen.
+ */
+const url = vi.hoisted(() => {
+  let value: Record<string, unknown> = {};
+  const listeners = new Set<() => void>();
+  return {
+    get: () => value,
+    set: (next: Record<string, unknown>) => {
+      value = next;
+      listeners.forEach((l) => l());
+    },
+    subscribe: (l: () => void) => {
+      listeners.add(l);
+      return () => listeners.delete(l);
+    },
+  };
+});
 
 vi.mock("@/lib/auth-context", () => ({
   useAuth: () => ({
@@ -30,7 +54,15 @@ vi.mock("@/lib/auth-context", () => ({
   }),
 }));
 
-vi.mock("@tanstack/react-router", () => ({
+vi.mock("@tanstack/react-router", async () => {
+  const React = await vi.importActual<any>("react");
+  return {
+  useSearch: () => React.useSyncExternalStore(url.subscribe, url.get, url.get),
+  useNavigate: () => (opts: any) => {
+    const next =
+      typeof opts.search === "function" ? opts.search(url.get()) : opts.search;
+    url.set(next ?? {});
+  },
   Link: ({ children, to, params, search, ...rest }: any) => {
     links.push({ to, params, search });
     return (
@@ -44,7 +76,8 @@ vi.mock("@tanstack/react-router", () => ({
       </a>
     );
   },
-}));
+  };
+});
 
 vi.mock("@/lib/api", async () => {
   const actual = await vi.importActual<any>("@/lib/api");
@@ -128,6 +161,7 @@ function sectionRow(label: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   links.length = 0;
+  url.set({});
   auth.userId = "user-1";
   (getPapersDetailed as any).mockResolvedValue(PAPERS);
   (getPaperIntelligence as any).mockImplementation(async (id: string) => {
@@ -480,5 +514,164 @@ describe("Tenancy and safety", () => {
     expect((getPaperIntelligence as any).mock.calls.map((c: any[]) => c[0]).sort()).toEqual(
       [PAPER_A, PAPER_B].sort(),
     );
+  });
+});
+
+describe("Selection persists across refresh", () => {
+  it("records Paper A in the URL when selected", async () => {
+    renderMatrix();
+
+    fireEvent.change(await screen.findByLabelText("Paper A"), {
+      target: { value: PAPER_A },
+    });
+
+    expect(url.get()).toEqual({ a: PAPER_A });
+  });
+
+  it("records Paper B in the URL when selected", async () => {
+    renderMatrix();
+    await selectBoth();
+
+    expect(url.get()).toEqual({ a: PAPER_A, b: PAPER_B });
+  });
+
+  it("restores both selections when the page loads with them", async () => {
+    // What a refresh actually looks like: fresh mount, URL already set.
+    url.set({ a: PAPER_A, b: PAPER_B });
+
+    renderMatrix();
+
+    expect(await screen.findByText("ALPHA research_problem")).toBeInTheDocument();
+    expect(screen.getByText("BETA research_problem")).toBeInTheDocument();
+    expect((await screen.findByLabelText("Paper A")) as HTMLSelectElement).toHaveValue(
+      PAPER_A,
+    );
+    expect(screen.getByLabelText("Paper B") as HTMLSelectElement).toHaveValue(PAPER_B);
+  });
+
+  it("survives an unmount and remount with the URL unchanged", async () => {
+    renderMatrix();
+    await selectBoth();
+    await screen.findByText("ALPHA research_problem");
+
+    const persisted = url.get();
+    cleanup();
+
+    renderMatrix();
+
+    expect(url.get()).toEqual(persisted);
+    expect(await screen.findByText("ALPHA research_problem")).toBeInTheDocument();
+    expect(screen.getByText("BETA research_problem")).toBeInTheDocument();
+  });
+
+  it("updates the URL when A and B are swapped", async () => {
+    renderMatrix();
+    await selectBoth();
+    await screen.findByText("ALPHA key_results");
+
+    fireEvent.change(screen.getByLabelText("Paper A"), { target: { value: PAPER_B } });
+    fireEvent.change(screen.getByLabelText("Paper B"), { target: { value: PAPER_A } });
+
+    expect(url.get()).toEqual({ a: PAPER_B, b: PAPER_A });
+  });
+
+  it("removes a parameter when its selection is cleared", async () => {
+    renderMatrix();
+    await selectBoth();
+
+    fireEvent.change(screen.getByLabelText("Paper B"), { target: { value: "" } });
+
+    // Removed, not left behind as an empty value.
+    expect(url.get()).toEqual({ a: PAPER_A });
+    expect("b" in url.get()).toBe(false);
+  });
+
+  it("leaves unrelated search parameters alone", async () => {
+    url.set({ tab: "notes" });
+
+    renderMatrix();
+    fireEvent.change(await screen.findByLabelText("Paper A"), {
+      target: { value: PAPER_A },
+    });
+
+    expect(url.get()).toEqual({ tab: "notes", a: PAPER_A });
+  });
+
+  it("renders the comparison exactly as before when restored from the URL", async () => {
+    url.set({ a: PAPER_A, b: PAPER_B });
+
+    renderMatrix();
+    await screen.findByText("ALPHA methodology");
+
+    const row = sectionRow("Methodology");
+    const cells = within(row).getAllByText(/^(ALPHA|BETA) methodology$/);
+    expect(cells[0].textContent).toBe("ALPHA methodology");
+    expect(cells[1].textContent).toBe("BETA methodology");
+    expect(screen.getAllByText("AI interpretation")).toHaveLength(20);
+  });
+});
+
+describe("URL parameters are not authorization", () => {
+  it("ignores a paper id the account does not own", async () => {
+    const FOREIGN = "ffffffff-0000-4000-8000-00000000000f";
+    url.set({ a: FOREIGN, b: PAPER_B });
+
+    renderMatrix();
+    await screen.findByLabelText("Paper A");
+
+    // Not in this account's paper list, so it is not a selection at all.
+    expect((screen.getByLabelText("Paper A") as HTMLSelectElement).value).toBe("");
+    expect(screen.getByText(/select two papers/i)).toBeInTheDocument();
+    // And it is never even requested.
+    const asked = (getPaperIntelligence as any).mock.calls.map((c: any[]) => c[0]);
+    expect(asked).not.toContain(FOREIGN);
+  });
+
+  it("ignores an id for a paper that is not indexed", async () => {
+    url.set({ a: "ccc", b: PAPER_B });
+
+    renderMatrix();
+    await screen.findByLabelText("Paper A");
+
+    expect((screen.getByLabelText("Paper A") as HTMLSelectElement).value).toBe("");
+    const asked = (getPaperIntelligence as any).mock.calls.map((c: any[]) => c[0]);
+    expect(asked).not.toContain("ccc");
+  });
+
+  it("fetches nothing from the URL while signed out", async () => {
+    auth.userId = undefined;
+    url.set({ a: PAPER_A, b: PAPER_B });
+
+    renderMatrix();
+
+    await waitFor(() => expect(getPapersDetailed).not.toHaveBeenCalled());
+    expect(getPaperIntelligence).not.toHaveBeenCalled();
+  });
+
+  it("puts no intelligence content, owner id or token in the URL", async () => {
+    renderMatrix();
+    await selectBoth();
+    await screen.findByText("ALPHA research_problem");
+
+    const encoded = JSON.stringify(url.get());
+    expect(encoded).not.toContain("ALPHA");
+    expect(encoded).not.toContain("user-1");
+    expect(encoded).not.toContain("token");
+    expect(encoded).not.toContain("owner");
+    // Ids only.
+    expect(Object.values(url.get()).sort()).toEqual([PAPER_A, PAPER_B].sort());
+  });
+
+  it("still makes exactly two reads and never generates", async () => {
+    url.set({ a: PAPER_A, b: PAPER_B });
+
+    renderMatrix();
+    await screen.findByText("ALPHA research_problem");
+
+    expect((getPaperIntelligence as any).mock.calls.length).toBe(2);
+    // The read API is the only one this component reaches for.
+    for (const call of (getPaperIntelligence as any).mock.calls) {
+      expect(call).toHaveLength(1);
+    }
   });
 });

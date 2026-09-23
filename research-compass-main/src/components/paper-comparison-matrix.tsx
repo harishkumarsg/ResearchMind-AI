@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { useMemo } from "react";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { AlertCircle, FileText, Loader2, Columns2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -182,8 +182,27 @@ export function PaperComparisonMatrix() {
   const { user } = useAuth();
   const userId = user?.id;
 
-  const [paperAId, setPaperAId] = useState("");
-  const [paperBId, setPaperBId] = useState("");
+  // Selection lives in the URL, so a refresh restores it and a
+  // comparison can be bookmarked or shared as a link. Only ids travel;
+  // see validateSearch in routes/compare.tsx.
+  const search = useSearch({ from: "/compare" }) as { a?: string; b?: string };
+  const navigate = useNavigate({ from: "/compare" });
+
+  const setSelection = (slot: "a" | "b", paperId: string) => {
+    navigate({
+      search: (prev: Record<string, unknown>) => {
+        const next = { ...prev };
+        // Clearing a slot removes its parameter rather than leaving an
+        // empty one behind.
+        if (paperId) next[slot] = paperId;
+        else delete next[slot];
+        return next;
+      },
+      // A selection change is not a navigation the Back button should
+      // have to step through.
+      replace: true,
+    });
+  };
 
   const { data: papers = [] } = useQuery({
     queryKey: queryKeys.papersDetailed(userId),
@@ -199,6 +218,17 @@ export function PaperComparisonMatrix() {
 
   const titleOf = (paperId: string) =>
     selectable.find((p) => p.paper_id === paperId)?.title ?? "";
+
+  // An id from the URL counts as a selection only once it is found in
+  // this account's own paper list. A pasted id belonging to someone else
+  // is therefore never even requested — the server would refuse it
+  // anyway, but there is no reason to ask. Before the list loads nothing
+  // is selected, and the selects fill in once it arrives.
+  const owned = (paperId: string | undefined) =>
+    paperId && selectable.some((p) => p.paper_id === paperId) ? paperId : "";
+
+  const paperAId = owned(search.a);
+  const paperBId = owned(search.b);
 
   const samePaper = !!paperAId && paperAId === paperBId;
 
@@ -241,9 +271,9 @@ export function PaperComparisonMatrix() {
         <>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {[
-              { label: "Paper A", value: paperAId, set: setPaperAId },
-              { label: "Paper B", value: paperBId, set: setPaperBId },
-            ].map(({ label, value, set }) => (
+              { label: "Paper A", value: paperAId, slot: "a" as const },
+              { label: "Paper B", value: paperBId, slot: "b" as const },
+            ].map(({ label, value, slot }) => (
               <div key={label} className="space-y-1.5">
                 <label
                   htmlFor={`select-${label.replace(/\s/g, "-").toLowerCase()}`}
@@ -254,7 +284,7 @@ export function PaperComparisonMatrix() {
                 <select
                   id={`select-${label.replace(/\s/g, "-").toLowerCase()}`}
                   value={value}
-                  onChange={(e) => set(e.target.value)}
+                  onChange={(e) => setSelection(slot, e.target.value)}
                   className="w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-sm outline-none focus:border-primary/50"
                 >
                   <option value="">Select a paper…</option>

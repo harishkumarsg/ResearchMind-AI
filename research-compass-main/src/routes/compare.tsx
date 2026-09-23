@@ -11,7 +11,34 @@ import type { CompareResult } from "@/lib/api";
 import { useRequireAuth } from "@/lib/require-auth";
 import { PaperComparisonMatrix } from "@/components/paper-comparison-matrix";
 
+/** A paper id is a UUID and nothing else. */
+const PAPER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export const Route = createFileRoute("/compare")({
+  /**
+   * `?a=<paper id>&b=<paper id>` — which two papers the structured
+   * comparison is showing, so a refresh restores them.
+   *
+   * Ids only. No intelligence content, no owner id, no token: the URL is
+   * a bookmark, not a payload, and it is never treated as authorization.
+   * A pasted id still has to survive server-side ownership checks in
+   * GET /paper-intelligence, and the matrix additionally ignores any id
+   * that is not in the caller's own paper list.
+   *
+   * Anything that is not UUID-shaped is dropped rather than carried, so
+   * junk in the query string becomes "nothing selected".
+   */
+  validateSearch: (search: Record<string, unknown>): { a?: string; b?: string } => {
+    const clean = (value: unknown) =>
+      typeof value === "string" && PAPER_ID.test(value) ? value : undefined;
+
+    const next: { a?: string; b?: string } = {};
+    const a = clean(search.a);
+    const b = clean(search.b);
+    if (a) next.a = a;
+    if (b) next.b = b;
+    return next;
+  },
   head: () => ({ meta: [{ title: "Compare · ResearchMind" }] }),
   component: ComparePage,
 });
