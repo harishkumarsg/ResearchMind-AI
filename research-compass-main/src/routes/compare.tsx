@@ -10,6 +10,7 @@ import { queryKeys } from "@/lib/query-keys";
 import type { CompareResult } from "@/lib/api";
 import { useRequireAuth } from "@/lib/require-auth";
 import { PaperComparisonMatrix } from "@/components/paper-comparison-matrix";
+import { PaperRelationshipSection } from "@/components/paper-relationship-panel";
 
 /** A paper id is a UUID and nothing else. */
 const PAPER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -279,6 +280,10 @@ function ComparePage() {
           what was already validated and stored. It costs no provider
           call and cannot rank anything. */}
       <PaperComparisonMatrix />
+
+      {/* Which sections each paper actually grounds. Reads the same two
+          analyses the matrix already loaded, so it costs no request. */}
+      <PaperRelationshipSection />
     </AppShell>
   );
 }
