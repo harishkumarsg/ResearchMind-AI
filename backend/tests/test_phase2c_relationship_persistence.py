@@ -808,25 +808,52 @@ class TestMigrationText(unittest.TestCase):
             lines.append(line)
         cls.sql = " ".join(" ".join(lines).split()).lower()
 
-    def test_exactly_one_new_migration_was_added(self):
+    def test_migration_0006_is_committed_and_none_is_uncommitted(self):
         """Asked of git rather than of a hard-coded list.
 
         An exact-list snapshot is what broke the Phase 2B equivalent the
-        moment 0006 landed, and it would break again at 0007. This states
-        the real intent: relative to the committed tree, this gate adds
-        exactly one migration file.
+        moment 0006 landed, and it would break again at 0007 — so this is
+        asked of git. But the FIRST git-based version asserted that 0006
+        was UNTRACKED, which was true only in the window before it was
+        committed and became permanently unsatisfiable the moment it was.
+        A test that can never pass again asserts nothing.
+
+        The durable intent, which holds before and after any future
+        migration lands:
+
+          * 0006 exists on disk;
+          * 0006 is TRACKED, i.e. actually committed rather than sitting
+            in someone's working tree;
+          * no migration file is uncommitted — a modified 0001-0006 or a
+            stray untracked 0007 both fail here, which is the real risk
+            this gate guards against.
+
+        Deliberately no assertion on the total migration count: 0007 must
+        stay possible without editing this test.
         """
         import subprocess
 
-        changed = subprocess.run(
+        repo_root = os.path.dirname(BACKEND_DIR)
+        migration = "backend/migrations/0006_paper_relationship.sql"
+
+        self.assertTrue(os.path.exists(MIGRATION_PATH), MIGRATION_PATH)
+
+        tracked = subprocess.run(
+            ["git", "ls-files", "backend/migrations/"],
+            capture_output=True, text=True, cwd=repo_root,
+        ).stdout.split()
+
+        self.assertIn(migration, tracked, f"0006 is not tracked by git: {tracked}")
+
+        uncommitted = subprocess.run(
             ["git", "status", "--porcelain", "--untracked-files=all",
              "backend/migrations/"],
-            capture_output=True, text=True, cwd=os.path.dirname(BACKEND_DIR),
+            capture_output=True, text=True, cwd=repo_root,
         ).stdout.strip().splitlines()
 
-        self.assertEqual(len(changed), 1, f"expected one new migration, got {changed}")
-        self.assertTrue(changed[0].strip().startswith("??"), changed[0])
-        self.assertIn("0006_paper_relationship.sql", changed[0])
+        self.assertEqual(
+            uncommitted, [], f"no migration should be uncommitted, got {uncommitted}"
+        )
 
     def test_the_migration_sequence_is_contiguous(self):
         names = sorted(
