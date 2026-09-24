@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     BigInteger,
+    CheckConstraint,
     Column,
     Date,
     DateTime,
@@ -179,6 +180,80 @@ class PaperIntelligenceRow(Base):
     # When the MODEL produced the object, as opposed to when the row was
     # written. Supplied by the caller, never defaulted from the database
     # clock, for the same reason usage_counters.day is not now()::date.
+    generated_at = Column(DateTime(timezone=True), nullable=False)
+    model = Column(Text, nullable=False)
+    schema_version = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    updated_at = Column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+
+class PaperRelationshipRow(Base):
+    """One generated cross-paper relationship analysis per unordered pair
+    of a single owner's papers (migration 0006).
+
+    Named ...Row for the same reason PaperIntelligenceRow is: the name
+    `PaperRelationship` already belongs to the Pydantic model in
+    app/services/relationship_schema.py that defines what may go in the
+    `relationship` column, and a module must be able to import both
+    without aliasing either.
+
+    `relationship` is the serialized, ALREADY-VALIDATED object. Plain JSON
+    here and jsonb in the migration — the same split reports.citations and
+    paper_intelligence.intelligence use, so the column is native jsonb in
+    production and still works against the offline SQLite harness.
+
+    The CHECK is the load-bearing part: `paper_a_id < paper_b_id` makes
+    (A,B) and (B,A) one row rather than two, and forbids a paper being
+    related to itself, in one constraint. It lives in the database rather
+    than only in the store because it is an invariant about stored rows.
+    SQLite enforces CHECK constraints too, so the offline suite exercises
+    the real rule.
+
+    No index=True on owner_id: the UniqueConstraint is backed by an index
+    with owner_id leftmost, so a second one would be redundant. Kept in
+    step with 0006, which omits it for that reason.
+    """
+
+    __tablename__ = "paper_relationships"
+
+    __table_args__ = (
+        CheckConstraint(
+            "paper_a_id < paper_b_id", name="paper_relationships_canonical_pair"
+        ),
+        UniqueConstraint(
+            "owner_id",
+            "paper_a_id",
+            "paper_b_id",
+            name="paper_relationships_owner_pair_key",
+        ),
+    )
+
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    # No ForeignKey to auth.users: that table is Supabase-managed and is
+    # not part of Base.metadata. The migration declares the real FK; this
+    # matches every other owner_id column in this file.
+    owner_id = Column(Uuid, nullable=False)
+    paper_a_id = Column(
+        Uuid, ForeignKey("papers.id", ondelete="CASCADE"), nullable=False
+    )
+    paper_b_id = Column(
+        Uuid, ForeignKey("papers.id", ondelete="CASCADE"), nullable=False
+    )
+    relationship = Column(JSON, nullable=False)
+    # Source provenance: the generated_at of the two paper_intelligence
+    # rows this analysis was derived from, so a re-analysed paper makes the
+    # relationship detectably stale. Oriented to the CANONICAL ids —
+    # paper_a_generated_at belongs to paper_a_id — matching the jsonb's own
+    # cites_a/cites_b orientation. NOT NULL: a relationship whose
+    # provenance is unknown cannot be checked for staleness at all.
+    paper_a_generated_at = Column(DateTime(timezone=True), nullable=False)
+    paper_b_generated_at = Column(DateTime(timezone=True), nullable=False)
+    # When the RELATIONSHIP generation began, as opposed to when the row
+    # was written or when its sources were produced. Supplied by the
+    # caller, never defaulted from the database clock, for the same reason
+    # usage_counters.day is not now()::date.
     generated_at = Column(DateTime(timezone=True), nullable=False)
     model = Column(Text, nullable=False)
     schema_version = Column(Text, nullable=False)

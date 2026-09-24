@@ -150,20 +150,19 @@ class TestMigrationFile(unittest.TestCase):
     def test_migration_creates_the_paper_intelligence_table(self):
         self.assertIn("create table if not exists paper_intelligence (", self.sql)
 
-    def test_exactly_one_new_migration_was_added(self):
+    def test_the_migration_sequence_is_contiguous_and_contains_0005(self):
+        """Originally an exact-list snapshot of the five migrations that
+        existed when Step 2 shipped. Later gates legitimately add
+        migrations (0006 arrived with Phase 2C), so the assertion now pins
+        what it actually cares about: 0005 is present and the sequence has
+        no gaps or duplicates."""
         names = sorted(
             name for name in os.listdir(MIGRATIONS_DIR) if name.endswith(".sql")
         )
-        self.assertEqual(
-            names,
-            [
-                "0001_core_schema.sql",
-                "0002_storage_policies.sql",
-                "0003_chat_messages.sql",
-                "0004_usage_counters.sql",
-                "0005_paper_intelligence.sql",
-            ],
-        )
+        self.assertIn("0005_paper_intelligence.sql", names)
+
+        numbers = [int(name[:4]) for name in names]
+        self.assertEqual(numbers, list(range(1, len(numbers) + 1)))
 
     # -- 2. required columns -------------------------------------------
     def test_required_columns_exist_with_the_expected_types(self):
