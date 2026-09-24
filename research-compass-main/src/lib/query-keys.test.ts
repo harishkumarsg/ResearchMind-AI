@@ -72,3 +72,60 @@ describe("queryKeys — search no longer shares the papers prefix", () => {
     expect(isPrefixOf(all, queryKeys.paperDetails(USER_A, "p.pdf"))).toBe(false);
   });
 });
+
+describe("queryKeys.paperRelationship — one unordered pair, one cache entry", () => {
+  // PAPER_LOW sorts below PAPER_HIGH, so it is the canonical first id.
+  const PAPER_LOW = "11111111-1111-1111-1111-111111111111";
+  const PAPER_HIGH = "22222222-2222-2222-2222-222222222222";
+
+  it("produces the SAME key whichever order the pair is given in", () => {
+    // Load-bearing, not tidy: the database stores one row per unordered
+    // pair, so swapping the two selects must not cache it twice — and the
+    // setQueryData after a generation must reach both orientations.
+    expect(queryKeys.paperRelationship(USER_A, PAPER_LOW, PAPER_HIGH)).toEqual(
+      queryKeys.paperRelationship(USER_A, PAPER_HIGH, PAPER_LOW),
+    );
+  });
+
+  it("sorts the ids into the key, matching the canonical pair in migration 0006", () => {
+    expect(queryKeys.paperRelationship(USER_A, PAPER_HIGH, PAPER_LOW)).toEqual([
+      "paper-relationship",
+      USER_A,
+      PAPER_LOW,
+      PAPER_HIGH,
+    ]);
+  });
+
+  it("embeds the user id, so one account cannot read another's relationship", () => {
+    expect(queryKeys.paperRelationship(USER_A, PAPER_LOW, PAPER_HIGH)).toContain(USER_A);
+    expect(queryKeys.paperRelationship(USER_A, PAPER_LOW, PAPER_HIGH)).not.toEqual(
+      queryKeys.paperRelationship(USER_B, PAPER_LOW, PAPER_HIGH),
+    );
+  });
+
+  it("distinguishes a signed-out reader from a real user", () => {
+    expect(queryKeys.paperRelationship(undefined, PAPER_LOW, PAPER_HIGH)).not.toEqual(
+      queryKeys.paperRelationship(USER_A, PAPER_LOW, PAPER_HIGH),
+    );
+  });
+
+  it("varies by the pair", () => {
+    const other = "33333333-3333-3333-3333-333333333333";
+    expect(queryKeys.paperRelationship(USER_A, PAPER_LOW, PAPER_HIGH)).not.toEqual(
+      queryKeys.paperRelationship(USER_A, PAPER_LOW, other),
+    );
+  });
+
+  it("has its own namespace, so it cannot be invalidated by paper-intelligence", () => {
+    // Regenerating a relationship must not discard either paper's stored
+    // analysis, and re-reading an analysis must not discard the
+    // relationship: neither key is a prefix of the other.
+    const relationship = queryKeys.paperRelationship(USER_A, PAPER_LOW, PAPER_HIGH);
+    const intelligence = queryKeys.paperIntelligence(USER_A, PAPER_LOW);
+
+    expect(relationship[0]).toBe("paper-relationship");
+    expect(isPrefixOf(intelligence, relationship)).toBe(false);
+    expect(isPrefixOf(relationship, intelligence)).toBe(false);
+    expect(isPrefixOf(["papers"], relationship)).toBe(false);
+  });
+});

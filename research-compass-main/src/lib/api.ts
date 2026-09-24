@@ -643,3 +643,196 @@ export async function getPaperIntelligence(
 
   return data as PaperIntelligenceResult;
 }
+
+// ============================================================
+// Paper relationship — the AI tier over two papers
+// ============================================================
+
+/** One reference into ONE paper's evidence. Location only — never text. */
+export interface RelationshipEvidence {
+  page: number;
+  chunk_id: number;
+}
+
+/** How the two papers' claims for one section relate. */
+export interface RelationshipSection {
+  relation: "aligned" | "divergent" | "complementary" | "not_comparable";
+  /** The model's reading. Always labelled as an interpretation in the UI. */
+  statement: string;
+  /** Into Paper A only. Never interchangeable with cites_b. */
+  cites_a: RelationshipEvidence[];
+  cites_b: RelationshipEvidence[];
+}
+
+/**
+ * The stored relationship for one canonical pair.
+ *
+ * `relationship.sections` holds ONLY the sections that were comparable —
+ * both papers grounded a claim and the evidence still rehydrated — so it
+ * is a subset of the canonical ten, not all of them.
+ *
+ * `stale` and `stale_reason` are the SERVER's verdict, computed from the
+ * two source analyses' current generated_at values. The frontend renders
+ * them and never recomputes them: two independent staleness rules would
+ * disagree the first time either changed.
+ */
+export interface PaperRelationshipResult {
+  paper_a_id: string;
+  paper_b_id: string;
+  relationship: { sections: Record<string, RelationshipSection> };
+  /** The source analyses this relationship was derived from. */
+  paper_a_generated_at: string;
+  paper_b_generated_at: string;
+  /** When the RELATIONSHIP ran — independent of both stamps above. */
+  generated_at: string;
+  model: string;
+  schema_version: string;
+  stale: boolean;
+  stale_reason: "source_intelligence_changed" | "source_intelligence_missing" | null;
+  superseded: boolean;
+  /** POST only: false when a fresh stored relationship was returned as-is. */
+  regenerated?: boolean;
+  comparable_sections?: string[];
+  evidence_used?: { paper_a: number; paper_b: number };
+}
+
+/**
+ * A relationship request the server refused for a reason the UI must act
+ * on differently, carrying the backend's own stable `code`.
+ *
+ * A typed code rather than message matching: the four 422/409 states need
+ * four different affordances — one offers a retry, one must NOT offer one,
+ * one links to a specific paper — and branching on prose would break the
+ * moment a message is reworded. The `message` stays the backend's authored
+ * wording and is what gets rendered.
+ */
+export class RelationshipStateError extends Error {
+  constructor(
+    public code: string,
+    message: string,
+    /** Extra fields the backend attached, e.g. paper_a_analysed. */
+    public detail: Record<string, unknown> = {},
+  ) {
+    super(message);
+    this.name = "RelationshipStateError";
+  }
+}
+
+function relationshipUrl(paperAId: string, paperBId: string): string {
+  // Ids only, as query parameters. The token travels in the Authorization
+  // header via authFetch and is never placed in a URL.
+  return (
+    `${API_BASE_URL}/paper-relationship` +
+    `?paper_a_id=${encodeURIComponent(paperAId)}` +
+    `&paper_b_id=${encodeURIComponent(paperBId)}`
+  );
+}
+
+/**
+ * Turn a non-2xx relationship response into the right exception.
+ *
+ * Shared by both helpers so GET and POST cannot drift apart on what a 409
+ * or a 422 means. Returns nothing — it always throws.
+ */
+async function throwForRelationshipStatus(response: Response): Promise<never> {
+  if (response.status === 429) {
+    // Existing convention: our wording, never the provider's.
+    throw new RateLimitError();
+  }
+
+  let data: Record<string, unknown> = {};
+  try {
+    data = (await response.json()) as Record<string, unknown>;
+  } catch {
+    // A body that is not JSON must not become a raw parse error.
+  }
+
+  const code = typeof data.code === "string" ? data.code : "";
+  const message =
+    typeof data.message === "string" && data.message
+      ? data.message
+      : "The comparison could not be loaded.";
+
+  if (response.status === 409 || response.status === 422) {
+    throw new RelationshipStateError(code, message, data);
+  }
+
+  if (response.status === 404) {
+    // Unknown, malformed and another owner's paper are one answer.
+    throw new Error(message);
+  }
+
+  // 500 and anything else: the backend already sanitized this.
+  throw new Error(message);
+}
+
+/**
+ * The stored relationship for two of the caller's own papers.
+ *
+ * Returns null for "nothing generated for this pair yet" — an empty state,
+ * not an error, and deliberately NOT a trigger to generate one. Reading is
+ * a database lookup on the server: no provider call, no generation
+ * allowance spent, safe on every page load.
+ */
+export async function getPaperRelationship(
+  paperAId: string,
+  paperBId: string,
+): Promise<PaperRelationshipResult | null> {
+  const response = await authFetch(relationshipUrl(paperAId, paperBId));
+
+  if (response.status === 404) {
+    const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+    // The owner's own pair, with nothing generated yet.
+    if (data.code === "relationship_not_generated") return null;
+    throw new Error(
+      typeof data.message === "string" && data.message ? data.message : "Paper not found.",
+    );
+  }
+
+  if (!response.ok) {
+    await throwForRelationshipStatus(response);
+  }
+
+  const data = await response.json();
+
+  if (data.status !== "success") {
+    throwForErrorBody(data, "Could not load the relationship analysis");
+  }
+
+  return data as PaperRelationshipResult;
+}
+
+/**
+ * Generate — or return the already-current — relationship for two papers.
+ *
+ * Charges one AI generation ONLY when the server actually calls the model:
+ * a stored relationship that is still current for both analyses comes back
+ * with `regenerated: false` and costs nothing.
+ *
+ * Never retried automatically. A 409 means a source analysis moved while
+ * the model was running, and retrying on its own would spend another unit
+ * against the same moving target.
+ */
+export async function generatePaperRelationship(
+  paperAId: string,
+  paperBId: string,
+): Promise<PaperRelationshipResult> {
+  const response = await authFetch(relationshipUrl(paperAId, paperBId), {
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    await throwForRelationshipStatus(response);
+  }
+
+  const data = await response.json();
+
+  if (data.status !== "success") {
+    // 200 with an error body: the established provider/model-rejection
+    // contract. throwForErrorBody converts throttling to RateLimitError
+    // and passes every other backend-authored message through.
+    throwForErrorBody(data, "The comparison could not be completed.");
+  }
+
+  return data as PaperRelationshipResult;
+}

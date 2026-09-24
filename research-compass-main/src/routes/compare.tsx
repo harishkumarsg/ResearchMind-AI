@@ -11,6 +11,7 @@ import type { CompareResult } from "@/lib/api";
 import { useRequireAuth } from "@/lib/require-auth";
 import { PaperComparisonMatrix } from "@/components/paper-comparison-matrix";
 import { PaperRelationshipSection } from "@/components/paper-relationship-panel";
+import { PaperAiRelationshipSection } from "@/components/paper-ai-relationship-panel";
 
 /** A paper id is a UUID and nothing else. */
 const PAPER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -284,6 +285,12 @@ function ComparePage() {
       {/* Which sections each paper actually grounds. Reads the same two
           analyses the matrix already loaded, so it costs no request. */}
       <PaperRelationshipSection />
+
+      {/* LAST, and deliberately so. The three tiers above state facts about
+          stored data; this one is the model's reading of how the two papers'
+          claims relate, and it is labelled as an interpretation throughout.
+          It reads its own stored row and generates only when asked. */}
+      <PaperAiRelationshipSection />
     </AppShell>
   );
 }

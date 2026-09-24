@@ -48,6 +48,29 @@ export const queryKeys = {
   paperIntelligence: (userId: string | undefined, paperId: string) =>
     ["paper-intelligence", userId, paperId] as const,
 
+  /**
+   * One owner's generated relationship for an UNORDERED pair of papers.
+   *
+   * The two ids are SORTED into the key. That is load-bearing rather than
+   * tidy: the relationship between two papers is one fact and the database
+   * stores it as one row (migration 0006 enforces
+   * `paper_a_id < paper_b_id`), so A+B and B+A must be one cache entry
+   * too. Without the sort, swapping the two selects would cache the same
+   * row twice and the setQueryData after a generation would update only
+   * the orientation the user happened to be looking at, leaving the other
+   * serving a stale copy.
+   *
+   * Its own namespace rather than a child of ["paper-intelligence", ...]:
+   * React Query matches by prefix, these hold different shapes, and
+   * regenerating a relationship must not invalidate either paper's stored
+   * analysis — the analyses did not change.
+   */
+  paperRelationship: (
+    userId: string | undefined,
+    paperAId: string,
+    paperBId: string,
+  ) => ["paper-relationship", userId, ...[paperAId, paperBId].sort()] as const,
+
   stats: (userId?: string) => ["stats", userId] as const,
 
   /** The owner's most recent stored report, restored on page load. */
