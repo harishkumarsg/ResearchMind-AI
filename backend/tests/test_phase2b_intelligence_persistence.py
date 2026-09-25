@@ -433,7 +433,10 @@ class TestRoundTrip(StoreTestCase):
         restored = get_intelligence(OWNER_A, PAPER_A)
 
         self.assertEqual(restored.schema_version, PAPER_INTELLIGENCE_SCHEMA_VERSION)
-        self.assertEqual(PAPER_INTELLIGENCE_SCHEMA_VERSION, "1")
+        # Deliberately NOT pinned to a literal. The version legitimately
+        # moves (it became "2" when Phase 3.2 added verbatim spans); what
+        # this test owns is that the default is recorded, not what it is.
+        # The literal value is pinned once, in the Phase 3.2 suite.
 
     def test_an_explicit_schema_version_is_recorded_as_given(self):
         save_intelligence(

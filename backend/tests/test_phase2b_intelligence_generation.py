@@ -41,7 +41,10 @@ from app.services.intelligence_schema import (
     SECTION_NAMES,
     IntelligenceValidationError,
 )
-from app.services.paper_intelligence_store import save_intelligence
+from app.services.paper_intelligence_store import (
+    PAPER_INTELLIGENCE_SCHEMA_VERSION,
+    save_intelligence,
+)
 from tests.sqlite_harness import attach_sqlite_db
 
 import app.api.paper_intelligence as pipeline
@@ -195,7 +198,7 @@ class TestSuccessfulGeneration(PipelineTestCase):
         self.assertEqual(body["status"], "success")
         self.assertEqual(body["paper_id"], PAPER_A)
         self.assertEqual(body["paper"], "Paper A")
-        self.assertEqual(body["schema_version"], "1")
+        self.assertEqual(body["schema_version"], PAPER_INTELLIGENCE_SCHEMA_VERSION)
         self.assertFalse(body["superseded"])
 
     def test_response_carries_exactly_the_ten_sections(self):
@@ -893,7 +896,7 @@ class TestPersistenceAndConcurrency(PipelineTestCase):
 
         rows = self.rows()
         self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0].schema_version, "1")
+        self.assertEqual(rows[0].schema_version, PAPER_INTELLIGENCE_SCHEMA_VERSION)
         self.assertEqual(rows[0].model, pipeline.GROQ_MODEL)
 
     def test_repeated_generation_keeps_exactly_one_row(self):

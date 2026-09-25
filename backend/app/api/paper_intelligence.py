@@ -60,6 +60,7 @@ from app.core.usage_guard import (
 from app.db.session import session_scope
 from app.rag.vector_store import COLLECTION_NAME, client
 from app.services.intelligence_schema import (
+    MAX_QUOTE_CHARS,
     SECTION_NAMES,
     IntelligenceValidationError,
     build_allowlist,
@@ -342,7 +343,9 @@ Each value is an object of exactly this shape:
 {{
   "status": "answered" or "not_specified",
   "summary": a string, or null,
-  "evidence": [ {{"page": <integer>, "chunk_id": <integer>}} ]
+  "evidence": [
+    {{"page": <integer>, "chunk_id": <integer>, "quote": <string or omitted>}}
+  ]
 }}
 
 RULES:
@@ -360,7 +363,21 @@ RULES:
    to avoid it.
 6. Add no field beyond status, summary and evidence.
 7. Keep each summary to 1-3 sentences.
-8. Do NOT include a "quote" field. Cite by page and chunk_id only.
+8. Each evidence entry MAY include a "quote": the exact span of the cited
+   block that supports the summary. Rules for it, all strict:
+   a. Copy it VERBATIM, character for character, from the block you are
+      citing. Do not paraphrase, reword, translate, fix typos, normalise
+      spacing or punctuation, or tidy line breaks.
+   b. Take it from ONE block — the block named by that entry's page and
+      chunk_id. Never combine text from two blocks, and never quote one
+      block while citing another.
+   c. Keep it to a single sentence or clause, at most {MAX_QUOTE_CHARS}
+      characters. A longer span is discarded entirely.
+   d. It must directly support that section's summary.
+   e. OMIT the field when no single span supports the summary on its own.
+      An omitted quote is correct and expected; an invented one is not.
+   A quote that is not found verbatim in the cited block is discarded by
+   the server. The page and chunk_id remain the citation that matters.
 """
 
 INTELLIGENCE_QUESTION = (

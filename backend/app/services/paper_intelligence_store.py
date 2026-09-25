@@ -50,7 +50,13 @@ from app.services.intelligence_schema import (
 #: rows predate it, which a single comparable value does. Bump it when
 #: the persisted structure changes in a way a reader must notice —
 #: adding a section, renaming a field, changing evidence identity.
-PAPER_INTELLIGENCE_SCHEMA_VERSION = "1"
+#: "2" since Phase 3.2: evidence items may now carry a verified verbatim
+#: `quote`. The jsonb SHAPE is unchanged — `quote` was always an optional
+#: field on Evidence — so a "1" row still parses under the same model and
+#: stays readable. The bump exists so a reader can tell the two apart: a
+#: "1" row carries no spans because none were ever requested, not because
+#: none could be verified.
+PAPER_INTELLIGENCE_SCHEMA_VERSION = "2"
 
 
 class PaperNotOwned(LookupError):

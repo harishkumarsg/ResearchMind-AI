@@ -68,6 +68,20 @@ SECTION_NAMES: Tuple[str, ...] = (
 STATUS_ANSWERED = "answered"
 STATUS_NOT_SPECIFIED = "not_specified"
 
+#: Hard ceiling on a verbatim evidence span, in characters.
+#:
+#: Two jobs. It keeps the completion inside the proven
+#: INTELLIGENCE_MAX_TOKENS budget (3000) now that spans are requested —
+#: ten sections' worth of unbounded quotations is exactly what would push
+#: a response past it. And it keeps a span a SPAN: a quote long enough to
+#: be a paragraph stops being evidence for one claim and becomes a
+#: reproduction of the source.
+#:
+#: Enforced by DROPPING an over-long quote, never by truncating it. A
+#: truncated span would still be rendered as verbatim while no longer
+#: being what the paper says.
+MAX_QUOTE_CHARS = 200
+
 #: Evidence allowlist: (page, chunk_id) -> the exact chunk text supplied
 #: to the model. The caller builds this from chunks already filtered by
 #: owner_id and paper_id, which is why cross-owner and cross-paper
@@ -275,11 +289,35 @@ def _normalized_section(
                 "The model cited evidence that was not supplied to it.",
             )
 
+        # Three deterministic gates, cheapest first. A quote that fails any
+        # of them is DROPPED to None — never rewritten, never trimmed to
+        # fit, and never matched against a different chunk. The reference
+        # itself survives, because (page, chunk_id) already checked out
+        # against the allowlist; only the span is discarded.
+        #
+        # No similarity anywhere: the test is `in`, an exact substring of
+        # the one chunk this reference names.
         quote = item.quote
-        if quote is not None and quote not in allowed_evidence[key]:
-            # Dropped, never rewritten. The reference stays because it
-            # checked out; only the decoration is discarded.
-            quote = None
+        if quote is not None:
+            if not quote.strip():
+                # An empty or whitespace-only span. This gate is not
+                # theoretical: "" and " " ARE substrings of essentially
+                # every chunk, so without it they pass the substring test
+                # below and get stored as a quote. Rendered, that is an
+                # empty span presented as though it were supporting text.
+                quote = None
+            elif len(quote) > MAX_QUOTE_CHARS:
+                # Over the cap. Dropped rather than truncated: half a
+                # sentence is not what the paper says, and a silently
+                # shortened span would still be rendered as verbatim.
+                quote = None
+            elif quote not in allowed_evidence[key]:
+                # Not present in the exact chunk this reference names.
+                # Deliberately keyed on `key` alone — never a scan across
+                # the allowlist, which would let a span from another
+                # supplied chunk (or, with a merged allowlist, another
+                # paper) validate under the wrong reference.
+                quote = None
 
         checked.append(Evidence(page=item.page, chunk_id=item.chunk_id, quote=quote))
 

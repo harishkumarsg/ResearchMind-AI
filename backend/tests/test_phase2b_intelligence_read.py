@@ -31,7 +31,10 @@ import app.db.session as session_module
 from app.core.auth import get_current_owner_id
 from app.db.models import Paper, PaperIntelligenceRow
 from app.services.intelligence_schema import SECTION_NAMES, validate_intelligence
-from app.services.paper_intelligence_store import save_intelligence
+from app.services.paper_intelligence_store import (
+    PAPER_INTELLIGENCE_SCHEMA_VERSION,
+    save_intelligence,
+)
 from tests.sqlite_harness import attach_sqlite_db
 
 import app.api.paper_intelligence as pipeline
@@ -141,7 +144,7 @@ class TestReadsStoredIntelligence(ReadTestCase):
         self.assertEqual(body["paper_id"], PAPER_A)
         self.assertEqual(body["paper"], "Paper A")
         self.assertEqual(body["model"], TEST_MODEL)
-        self.assertEqual(body["schema_version"], "1")
+        self.assertEqual(body["schema_version"], PAPER_INTELLIGENCE_SCHEMA_VERSION)
         self.assertFalse(body["superseded"])
         self.assertTrue(body["generated_at"].startswith("2026-09-22T11:30"))
 
