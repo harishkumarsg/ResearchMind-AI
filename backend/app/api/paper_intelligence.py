@@ -63,6 +63,7 @@ from app.services.intelligence_schema import (
     MAX_QUOTE_CHARS,
     SECTION_NAMES,
     IntelligenceValidationError,
+    QuoteTally,
     build_allowlist,
     validate_intelligence,
 )
@@ -498,6 +499,10 @@ def paper_intelligence(
     allowed_evidence: Dict[Tuple[int, int], str] = {}
     total_pages = 0
     raw = ""
+    # Bound here for the same reason as the three above: the rejection
+    # handler must always be able to log it, even if validation raises
+    # before a single evidence item was examined.
+    tally = QuoteTally()
 
     try:
         # -- 2. exact, owner-scoped paper resolution --------------------
@@ -574,6 +579,15 @@ def paper_intelligence(
             raw,
             allowed_evidence=allowed_evidence,
             total_pages=total_pages,
+            tally=tally,
+        )
+
+        # Span accounting, counts only. This is the line that answers
+        # "did the model offer no spans, or did we refuse them all?" —
+        # a question the silent gates made unanswerable before.
+        print(
+            f"[paper-intelligence] spans paper={resolved_paper_id} "
+            f"{tally.as_log_fields()}"
         )
 
         # -- 8. persist, only now ---------------------------------------
@@ -610,7 +624,8 @@ def paper_intelligence(
         print(
             f"[paper-intelligence] rejected generation code={e.code} "
             f"paper={paper_id} allowlist={len(allowed_evidence)} "
-            f"total_pages={total_pages} response_chars={len(raw)}"
+            f"total_pages={total_pages} response_chars={len(raw)} "
+            f"{tally.as_log_fields()}"
         )
         return {"status": "error", "code": e.code, "message": e.message}
 

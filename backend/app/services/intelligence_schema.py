@@ -44,6 +44,7 @@ still exactly what the model cited.
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from typing import Dict, List, Mapping, Optional, Tuple
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
@@ -81,6 +82,59 @@ STATUS_NOT_SPECIFIED = "not_specified"
 #: truncated span would still be rendered as verbatim while no longer
 #: being what the paper says.
 MAX_QUOTE_CHARS = 200
+
+
+@dataclass
+class QuoteTally:
+    """Why each evidence item ended up with, or without, a span.
+
+    Exists because the three gates in `_normalized_section` set
+    `quote = None` SILENTLY, which made two very different outcomes
+    indistinguishable from outside: a model that offered no spans, and a
+    model whose every span was refused. The first production span-aware
+    generation returned nine evidence items and zero quotes, and nothing
+    in the system could say which of those had happened.
+
+    COUNTS ONLY. No quote text, no chunk text, no page or chunk id — this
+    object is built to be safe to log, so it deliberately cannot carry
+    anything that would leak paper content into a log line.
+
+    `absent` and the three `dropped_*` fields are the distinction that
+    matters: absent means the model omitted the field (rule 8e of the
+    prompt says that is correct and expected), while a drop means it
+    supplied one the server refused.
+
+    Invariant: offered == kept + dropped, and offered + absent is the
+    number of evidence items across all answered sections.
+    """
+
+    #: Evidence items where the model supplied a non-null quote.
+    offered: int = 0
+    #: …of those, the ones that passed all three gates.
+    kept: int = 0
+    #: Evidence items with no quote field at all, or an explicit null.
+    absent: int = 0
+    #: Refused: empty or whitespace-only.
+    dropped_blank: int = 0
+    #: Refused: longer than MAX_QUOTE_CHARS.
+    dropped_too_long: int = 0
+    #: Refused: not an exact substring of the chunk the item cites.
+    dropped_not_verbatim: int = 0
+
+    @property
+    def dropped(self) -> int:
+        return self.dropped_blank + self.dropped_too_long + self.dropped_not_verbatim
+
+    def as_log_fields(self) -> str:
+        """One space-separated key=value run, for an existing log line.
+
+        Safe by construction: every value is an integer.
+        """
+        return (
+            f"offered={self.offered} kept={self.kept} absent={self.absent} "
+            f"blank={self.dropped_blank} too_long={self.dropped_too_long} "
+            f"not_verbatim={self.dropped_not_verbatim}"
+        )
 
 #: Evidence allowlist: (page, chunk_id) -> the exact chunk text supplied
 #: to the model. The caller builds this from chunks already filtered by
@@ -263,6 +317,7 @@ def _normalized_section(
     section: Section,
     allowed_evidence: EvidenceAllowlist,
     total_pages: int,
+    tally: "QuoteTally",
 ) -> Section:
     if section.status == STATUS_NOT_SPECIFIED:
         # Canonical form: a section with nothing to say carries no
@@ -298,18 +353,26 @@ def _normalized_section(
         # No similarity anywhere: the test is `in`, an exact substring of
         # the one chunk this reference names.
         quote = item.quote
-        if quote is not None:
+        if quote is None:
+            # The model omitted the field. Per the prompt's rule 8e that is
+            # a correct answer, and counting it separately is the whole
+            # point of the tally: it is NOT a rejection.
+            tally.absent += 1
+        else:
+            tally.offered += 1
             if not quote.strip():
                 # An empty or whitespace-only span. This gate is not
                 # theoretical: "" and " " ARE substrings of essentially
                 # every chunk, so without it they pass the substring test
                 # below and get stored as a quote. Rendered, that is an
                 # empty span presented as though it were supporting text.
+                tally.dropped_blank += 1
                 quote = None
             elif len(quote) > MAX_QUOTE_CHARS:
                 # Over the cap. Dropped rather than truncated: half a
                 # sentence is not what the paper says, and a silently
                 # shortened span would still be rendered as verbatim.
+                tally.dropped_too_long += 1
                 quote = None
             elif quote not in allowed_evidence[key]:
                 # Not present in the exact chunk this reference names.
@@ -317,7 +380,10 @@ def _normalized_section(
                 # the allowlist, which would let a span from another
                 # supplied chunk (or, with a merged allowlist, another
                 # paper) validate under the wrong reference.
+                tally.dropped_not_verbatim += 1
                 quote = None
+            else:
+                tally.kept += 1
 
         checked.append(Evidence(page=item.page, chunk_id=item.chunk_id, quote=quote))
 
@@ -333,6 +399,7 @@ def validate_intelligence(
     *,
     allowed_evidence: EvidenceAllowlist,
     total_pages: int,
+    tally: "Optional[QuoteTally]" = None,
 ) -> PaperIntelligence:
     """Parse, validate and normalize one model response.
 
@@ -347,6 +414,13 @@ def validate_intelligence(
     Raises IntelligenceValidationError on anything that must not be
     persisted.
     """
+    # An OUT-parameter, deliberately optional: the return type stays
+    # PaperIntelligence so every existing caller — eight test sites and the
+    # endpoint — is unaffected. A caller that wants the counts passes one in;
+    # a caller that does not gets a throwaway.
+    if tally is None:
+        tally = QuoteTally()
+
     if total_pages < 1:
         raise IntelligenceValidationError(
             "invalid_structure", "The paper has no indexed pages to cite."
@@ -363,7 +437,9 @@ def validate_intelligence(
 
     return PaperIntelligence(
         **{
-            name: _normalized_section(section, allowed_evidence, total_pages)
+            name: _normalized_section(
+                section, allowed_evidence, total_pages, tally
+            )
             for name, section in structured.sections().items()
         }
     )

@@ -608,7 +608,14 @@ class TestDeterminismAndPurity(SchemaTestCase):
                 imported.add(node.module.split(".")[0])
 
         # Exactly what a pure schema needs, and nothing that can reach out.
-        self.assertEqual(imported, {"__future__", "json", "typing", "pydantic"})
+        # `dataclasses` joined the list in Phase 3.5 for QuoteTally: pure
+        # stdlib, no I/O, no network, same category as json and typing, and
+        # already the house pattern for StoredIntelligence and PaperEvidence.
+        # The exhaustive equality is the point of this test — a new import
+        # has to be argued for here rather than slipping in.
+        self.assertEqual(
+            imported, {"__future__", "dataclasses", "json", "typing", "pydantic"}
+        )
 
         for forbidden in (
             "groq", "voyageai", "qdrant_client", "requests", "httpx",
