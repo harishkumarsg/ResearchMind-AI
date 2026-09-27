@@ -513,9 +513,15 @@ class TestPromptAndValidatorAgree(unittest.TestCase):
         for phrase in ("paraphrase", "Never combine"):
             self.assertIn(phrase, self.prompt)
 
-    def test_the_completion_budget_is_unchanged(self):
+    def test_the_intelligence_completion_budget_is_5000(self):
+        # Phase 3.2 deliberately held this at 3000 while adding spans.
+        # That decision was wrong and production proved it:
+        # finish_reason=length, reasoning_tokens=1716, so only 1284 of
+        # 3000 was left for the JSON body. Raised to REPORT_MAX_TOKENS'
+        # already-proven 5000 in the budget fix. The CONTEXT budget is the
+        # one this test still guards as genuinely unchanged.
         import app.api.paper_intelligence as pipeline
-        self.assertEqual(pipeline.INTELLIGENCE_MAX_TOKENS, 3000)
+        self.assertEqual(pipeline.INTELLIGENCE_MAX_TOKENS, 5000)
         self.assertEqual(pipeline.INTELLIGENCE_CONTEXT_CHARS, 12000)
 
 

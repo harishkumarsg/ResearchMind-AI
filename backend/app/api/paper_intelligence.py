@@ -89,12 +89,23 @@ PAPER_CHUNK_CAP = 1024
 #: to drift away from it.
 INTELLIGENCE_CONTEXT_CHARS = 12000
 
-#: Completion budget. Ten sections of prose plus their evidence arrays,
-#: and the reasoning tokens this model draws from the same budget. Held
-#: at /summarize-paper's proven 3000 rather than raised: the prompt below
-#: suppresses the optional `quote` field, which is what would otherwise
-#: have pushed a ten-section object past it. See the prompt's rule 8.
-INTELLIGENCE_MAX_TOKENS = 3000
+#: Completion budget. Ten sections of prose, their evidence arrays, the
+#: optional verbatim `quote` on each entry, and the reasoning tokens this
+#: model draws from the same budget.
+#:
+#: This was 3000, justified by the prompt SUPPRESSING the quote field —
+#: "which is what would otherwise have pushed a ten-section object past
+#: it". Phase 3.2 inverted rule 8 to permit that field and left the number
+#: alone, so the justification stopped holding while the number stayed.
+#: Production settled it: ETASR_18859 came back finish_reason=length with
+#: reasoning_tokens=1716, leaving 1284 of 3000 for a body that needs more,
+#: and the run was discarded after charging a unit.
+#:
+#: 5000 is not a guess. It is REPORT_MAX_TOKENS, already proven against
+#: GROQ_TIMEOUT_SECONDS for thirteen sections by this same model. Quotes
+#: are capped at MAX_QUOTE_CHARS and summaries at 1-3 sentences, so the
+#: object this budget covers stays bounded. See the prompt's rule 8.
+INTELLIGENCE_MAX_TOKENS = 5000
 
 #: One authored message for every miss — unknown id, malformed id, and
 #: another owner's id alike. Matching /paper-file: the wording must not

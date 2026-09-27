@@ -118,10 +118,17 @@ router = APIRouter()
 #: drift away from the figure already proven against GROQ_TIMEOUT_SECONDS.
 RELATIONSHIP_CONTEXT_CHARS_PER_PAPER = EVIDENCE_CONTEXT_CHARS
 
-#: Completion budget. Held at /paper-intelligence's proven 3000 rather
-#: than raised: a relationship object covers only the comparable sections
-#: and carries no `quote` field, so it is strictly smaller than the
-#: ten-section object that number was proven against.
+#: Completion budget, deliberately independent of /paper-intelligence's.
+#: That endpoint was raised to 5000 because its evidence entries may carry
+#: a verbatim `quote` of up to MAX_QUOTE_CHARS, and twenty of those did not
+#: fit alongside the model's reasoning tokens.
+#:
+#: This object has no such field: a SectionRelationship is a `relation`, a
+#: `statement`, and two citation lists whose entries are page/chunk_id
+#: pairs only. It also covers just the sections the deterministic gate
+#: found comparable — a subset of the same ten, never more. So 3000 stays,
+#: anchored to /summarize-paper's figure of the same size, which is
+#: unchanged and proven against GROQ_TIMEOUT_SECONDS.
 RELATIONSHIP_MAX_TOKENS = 3000
 
 #: One authored message for every miss — unknown id, malformed id, and

@@ -413,8 +413,14 @@ class TestEndpointWiring(unittest.TestCase):
         self.assertIn('8. Each evidence entry MAY include a "quote"', self.source)
         self.assertNotIn('Do NOT include a "quote"', self.source)
 
-    def test_the_budgets_were_not_touched(self):
-        self.assertEqual(self.pipeline.INTELLIGENCE_MAX_TOKENS, 3000)
+    def test_the_intelligence_budget_is_5000_and_context_budget_is_unchanged(self):
+        # The completion budget moved 3000 -> 5000 AFTER this file was
+        # written, in the budget fix: production returned
+        # finish_reason=length with reasoning_tokens=1716, which left too
+        # little of 3000 for a quote-bearing ten-section object. The
+        # observability work itself still touches no budget — the context
+        # window and the quote cap are the two that must not move here.
+        self.assertEqual(self.pipeline.INTELLIGENCE_MAX_TOKENS, 5000)
         self.assertEqual(self.pipeline.INTELLIGENCE_CONTEXT_CHARS, 12000)
         self.assertEqual(MAX_QUOTE_CHARS, 200)
 
