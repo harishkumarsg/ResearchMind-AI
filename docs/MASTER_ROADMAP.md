@@ -1,7 +1,17 @@
 # ResearchMind AI — Master Project Roadmap
 
-**Last updated:** 2026-09-14
+**Last updated:** 2026-09-27
 **Status of this document:** current and authoritative.
+
+> **Reconciled 2026-09-27.** This document was finalized at `25064eb` (2026-09-14)
+> and then went stale: **44 commits** landed after it, including three migrations
+> and roughly 28 new backend test files, and the product was deployed. A
+> read-only reconciliation audit against git history restored the record. Section
+> 2 now carries the later work, §3 replaces the former "NOT DEPLOYED" state, and
+> §§7–8 correct backlog items that were resolved or whose line numbers drifted.
+>
+> **No future phase was added.** None is defined anywhere in the repository, and
+> inventing one would be fabrication. That remains a valid state.
 
 > **Older documents removed.** `docs/ROADMAP.md` (a pre-security sprint list),
 > `docs/ARCHITECTURE.md` (empty), `docs/API_REFERENCE.md` (listed endpoints that
@@ -44,7 +54,9 @@ FastAPI backend  ← the application authorization boundary
    ├── app/rag/              embedder (Voyage), vector_store (Qdrant), reranker
    └── app/db/               SQLAlchemy models + session factory + JWT claims
    │
-   ├── Supabase Postgres     papers, reports, chat_sessions, chat_messages
+   ├── Supabase Postgres     papers, reports, chat_sessions, chat_messages,
+   │                         plus usage counters (0004), paper intelligence (0005)
+   │                         and paper relationships (0006)
    │                         app role researchmind_app (NOBYPASSRLS), RLS FORCED
    ├── Supabase Storage      bucket "papers", path {owner}/{paper}/original.pdf
    ├── Qdrant Cloud          collection researchmind_v2
@@ -61,16 +73,18 @@ driven by the same verified identity.
 
 ### Established technology — local validated build
 
-This describes the locally validated product. **The deployed code differs
-substantially; see §3.**
+This describes the validated product. **Corrected 2026-09-27:** this section
+previously said "the deployed code differs substantially", which was true when
+`origin/master` was `d83a16f` and is no longer — `origin/master` now equals `HEAD`
+(`ddd6818`). See §3 for the deployment state and its SHA-verification limitation.
 
 | Layer | Choice | Notes |
 |---|---|---|
-| Backend | FastAPI 0.136.3 / Starlette 1.2.1, Python 3.13 | `render.yaml` → `uvicorn app.main:app` |
+| Backend | FastAPI 0.136.3 / Starlette 1.2.1, Python 3.11 | live config is `backend/railway.toml` → `uvicorn app.main:app`; the root `render.yaml` is stale (§7 item 13) |
 | ORM / driver | SQLAlchemy 2.0.50, psycopg 3.3.5 | `DATABASE_URL` uses `postgresql+psycopg://` |
 | Database | Supabase Postgres **17.6** | session-mode pooler, port 5432 |
 | Database role | `researchmind_app` | NOBYPASSRLS, owns no tables; username `researchmind_app.<project_ref>` |
-| Row-level security | enabled **and forced** on all four tables | owner-only policies, `USING (owner_id = auth.uid())` |
+| Row-level security | enabled **and forced** on all **seven** tables | owner-only policies, `USING (owner_id = auth.uid())`. C1 forced the original four; `usage_counters` (0004), `paper_intelligence` (0005) and `paper_relationships` (0006) each ship `enable` + `force row level security` and an owner-only policy in their own migration |
 | Auth | Supabase Auth, Google OAuth only | JWKS verification, RS256/ES256 allowlist |
 | Object storage | Supabase Storage, bucket `papers` | RLS policies in migration 0002 |
 | Vectors | Qdrant Cloud, `researchmind_v2` | 1024-dim, COSINE, 8 payload indexes |
@@ -271,57 +285,247 @@ Retrieval constants (`ask_stream.py`): `SEARCH_LIMIT=8`, `TOP_CHUNKS=4`,
   - True concurrency on the `UNIQUE(owner_id)` race — the retry was exercised with
     a real `UniqueViolation`, but the two attempts were sequential, not raced.
 
-- **Committed:** local commit `cebd105`. **Not pushed, not deployed.**
+- **Committed:** commit `cebd105`. *(At the time of writing this was local only. It
+  is now an ancestor of `HEAD` and pushed — verified with
+  `git merge-base --is-ancestor`.)*
 - **Status:** COMPLETE / PASS.
+
+---
+
+## 2b. Completed work after C1
+
+C1 was the last item defined as a *major phase*. The work below landed afterwards
+in smaller, separately approved steps. Some carries its own label and some does
+not; the labels used here are the ones that actually appear in the repository, and
+none is invented. Each row is tied to a commit and to test or migration evidence.
+
+### Production hardening and capability series
+
+| Work | Commit | Evidence |
+|---|---|---|
+| CORS allowlist — replaced a non-matching wildcard origin | `7dd86f0` | `app/core/cors.py`, `tests/test_cors_config.py` |
+| Quotas and rate limits | `265c471` | `migrations/0004_usage_counters.sql`, five `tests/test_e1_*.py` |
+| E2 — Ask questions spanning multiple papers | `9d63bb1` | `tests/test_e2_multi_paper_retrieval.py` |
+| E2b — multi-paper evidence diversity within the context budget | `3efbda1` | `tests/test_e2b_evidence_diversity.py` |
+| P1 — provider timeouts and error handling | `5ce8624` | `tests/test_p1_provider_timeouts.py` |
+| P2A — prevent silent incomplete generations | `df5220a` | `tests/test_p2a_generation_budgets.py` |
+| P2B — per-caller generation budgets for Report, Compare, Summarize | `8b25f37` | `tests/test_p2b_caller_budgets.py` |
+| Error sanitization — unclassified internal errors | `8a49ea9` | `tests/test_internal_error_sanitization.py` |
+
+### Phase 1A — Quota and paper UX hardening
+
+- **Implemented:** quota and paper-UX hardening following the P-series.
+- **Evidence:** commit `c42ddf5`, `tests/test_phase1a_hardening.py`.
+- **Status:** COMPLETE.
+
+### Phase 2A — Paper Research Workspace
+
+- **Objective:** a per-paper workspace rather than a single global Ask surface.
+- **Evidence:** commits `561caf4`, `39da455` (signed-out redirect for protected
+  routes), `tests/test_phase2a_paper_workspace.py`.
+- **Status:** COMPLETE.
+
+### Phase 2B — Structured Paper Intelligence
+
+- **Objective:** a validated ten-section structured analysis of one paper, where
+  nothing is persisted that did not survive validation against an allowlist built
+  from the exact chunks supplied to the model.
+- **Implemented, in five approved steps:** schema and validator; persistence;
+  generation pipeline; persisted reader; Evidence Inspector.
+- **Schema:** `migrations/0005_paper_intelligence.sql` (applied).
+- **Evidence:** commits `65492e4`, `31388eb`, `5eb1342`, `9c1ba11`, `12ff9d3`;
+  `tests/test_phase2b_intelligence_schema.py`,
+  `tests/test_phase2b_intelligence_persistence.py`,
+  `tests/test_phase2b_intelligence_generation.py`,
+  `tests/test_phase2b_intelligence_read.py`.
+- **Invariant, enforced in code:** the validator trusts no `owner_id`, `paper_id`,
+  paper title or Qdrant point id from the model; evidence identity is
+  `(page, chunk_id)` checked against the allowlist.
+- **Status:** COMPLETE.
+
+### Phase 2C — Multi-paper comparison and AI relationships
+
+- **Objective:** compare two of the owner's papers, first deterministically, then
+  with an AI relationship layer that cites both sides.
+- **Schema:** `migrations/0006_paper_relationship.sql` (applied), which enforces
+  the canonical pair ordering `paper_a_id < paper_b_id` and records
+  `paper_a_generated_at` / `paper_b_generated_at` for staleness detection.
+- **Evidence:** commits `7398e3b`, `0c40249`, `6d08a3a`, `85c04e7`, `73265b0`,
+  `be5c05f`, `0cc4be1`, `b0edbed`, `7a72802`;
+  `tests/test_phase2c_relationship_schema.py`,
+  `tests/test_phase2c_relationship_evidence.py`,
+  `tests/test_phase2c_relationship_persistence.py`,
+  `tests/test_phase2c_relationship_api.py`.
+- **Status:** COMPLETE.
+
+### Phase 3.2 — Verified Evidence Spans
+
+- **Objective:** let an evidence entry carry an optional `quote` that is an exact
+  span of the chunk it cites, refused outright rather than repaired if it is not.
+- **Implemented:** three deterministic gates — blank, over `MAX_QUOTE_CHARS`
+  (200), and not an exact substring of the one cited chunk. `schema_version`
+  became `"2"`. The prompt's rule 8 was rewritten to request an optional verbatim
+  span; the completion budget was deliberately held at 3000 at the time (see
+  Phase 3.5 for why that was wrong).
+- **Evidence:** commits `f552578`, `075c8a9`; `tests/test_phase3_evidence_spans.py`
+  — note the filename says `phase3` while its docstring says "Phase 3.2". The
+  mismatch is recorded rather than renamed.
+- **Status:** COMPLETE.
+
+### Phase 3.3 — Evidence Inspector UI
+
+- **Objective:** cover the span-rendering behaviour of the Evidence Inspector,
+  which had been span-capable since Phase 2B step 5 (`12ff9d3`) but had never
+  received a span from production.
+- **Implemented:** test coverage only. No frontend production code changed, and
+  the UI deliberately does not branch on `schema_version`.
+- **Evidence:** `src/components/paper-evidence-spans.test.tsx`.
+- **Status:** COMPLETE.
+
+### Phase 3.4 — Production QA (activity record, not a code artifact)
+
+- **What it was:** a controlled production QA pass after Phase 3.3.
+- **Finding:** one generation returned `schema_version: 2` with **zero** quotes
+  across its evidence items. That finding is what motivated Phase 3.5.
+- **No durable repository artifact exists.** There is no commit, test file,
+  migration or source label for Phase 3.4 — a search of `backend/`,
+  `research-compass-main/src` and `docs/` returns zero matches for the label.
+  It is recorded here as a verification activity so the numbering is not
+  mysterious, and **not** as an implementation.
+- **Status:** ACTIVITY COMPLETE; no artifact.
+
+### Phase 3.5 — Quote observability and completion-budget hardening
+
+- **Objective:** make the quote pipeline diagnosable, then fix what the diagnosis
+  exposed — without relaxing validation.
+- **Implemented:**
+  1. **`QuoteTally`** — six integer counters (`offered`, `kept`, `absent`,
+     `dropped_blank`, `dropped_too_long`, `dropped_not_verbatim`) incremented
+     inside the three existing gates, changing no validation decision. Counts are
+     emitted in two existing server log lines and are **not** exposed through any
+     API response. No raw quote, chunk, prompt or provider text is logged.
+  2. **Completion budget raised 3000 → 5000.** The old number was justified by the
+     prompt suppressing the `quote` field; Phase 3.2 inverted that rule and left
+     the number alone. Production then returned `finish_reason=length` with
+     `reasoning_tokens=1716`, leaving 1284 of 3000 for a body that needed more.
+     5000 is `REPORT_MAX_TOKENS`, already proven against `GROQ_TIMEOUT_SECONDS`.
+     `RELATIONSHIP_MAX_TOKENS` stays at 3000 — that object carries no `quote`
+     field.
+- **Evidence:** commits `f8804b9`, `ddd6818`;
+  `tests/test_phase35_quote_observability.py` (35 tests),
+  `tests/test_phase35_intelligence_budget.py` (24 tests). Exact-substring quote
+  validation, `MAX_QUOTE_CHARS = 200`, the prompt and the schema are all unchanged
+  — the prompt was verified byte-identical by AST source-segment hash.
+- **Production verification (one controlled generation):** `finish_reason=stop` at
+  the **same** `reasoning_tokens=1716` that had previously truncated under 3000;
+  10 sections, 10 answered, 16 evidence items, `schema_version=2`, `generated_at`
+  changed, result read back successfully. Telemetry: `offered=16 kept=1 absent=0
+  blank=0 too_long=2 not_verbatim=13`. `(page, chunk_id)` remained the
+  authoritative evidence identity, and every dropped span kept its reference.
+- **Validation:** 38 Phase 3.2 tests, 35 Phase 3.5 observability tests, 24 budget
+  tests, and the full backend suite at **1292 tests, 0 failed, 7 skipped**.
+- **Status:** COMPLETE / CLOSED.
+
+#### Phase 3.5 quote-quality investigation — measured findings
+
+A read-only local experiment ran the repository's own
+`pdf_loader → clean_text → create_chunks` path over the three PDFs already in
+`backend/uploads/papers/`, and characterised the spans a model would be asked to
+copy byte-exactly:
+
+- 1,933 candidate spans (40–200 characters) across 230 chunks.
+- **89 (4.6%)** contain neither a newline nor a non-ASCII character — the ceiling
+  for a byte-exact copier.
+- A newline is implicated in **96.3%** of breakable candidates and is the sole
+  breaker in **56.8%**.
+- Model-style normalization (newline→space, NFKC, curly quotes, dashes, space
+  collapsing) recovered **no** additional matches.
+- Production keep rate was **1/16 = 6.2%**, consistent with that 4.6% ceiling.
+
+`clean_text` deliberately preserves newlines, and no stage normalises PDF
+presentation artifacts such as the `ﬁ`/`ﬂ` ligatures, curly quotes and en dashes
+the extraction produces.
+
+**Not proven, and not claimed:** that the 13 production `not_verbatim` rejections
+were newline failures. Those strings were never logged and cannot be
+reconstructed, so no causal mapping from the local corpus to them was observed.
+The validator is not implicated — its substring test cannot reject a true
+substring, and that is covered by tests and mutation runs.
 
 ---
 
 ## 3. Current state
 
-- **C1 = COMPLETE / PASS. No defined major roadmap phase remains.**
-- **Local git:** `HEAD` = `cebd105` (C1 claims plumbing), parent `e144ab0`
-  (D0–D2 checkpoint). Both commits exist **locally only**.
-- **Local application role:** `researchmind_app`, `rolbypassrls = false`.
-- **RLS:** enabled and forced on all four tables; four owner-only policies,
-  unchanged, no explicit `WITH CHECK`.
-- **Local validation baseline** (shared Supabase project and Qdrant cluster):
+- **No defined major roadmap phase remains.** C1 was the last item defined as a
+  major phase; the work in §2b landed afterwards in smaller approved steps, and
+  Phase 3.5 is CLOSED.
+- **Git:** `HEAD` = `ddd6818` (`fix: raise paper intelligence completion budget`),
+  parent `f8804b9`. `origin/master` = `ddd6818`; local, tracking and server refs
+  agree. The working tree was clean before this documentation update; while it is
+  uncommitted, this roadmap file is the only working-tree modification. `e144ab0`,
+  `cebd105` and `25064eb` are all ancestors of `HEAD` and pushed.
+- **Migrations at `HEAD`:** six, all applied —
+  `0001_core_schema.sql`, `0002_storage_policies.sql`, `0003_chat_messages.sql`,
+  `0004_usage_counters.sql`, `0005_paper_intelligence.sql`,
+  `0006_paper_relationship.sql`. There is no `0007`.
+- **Application role:** `researchmind_app`, `rolbypassrls = false`.
+- **RLS:** enabled and forced on the core tables; owner-only policies, unchanged,
+  no explicit `WITH CHECK`.
+- **Validation baseline — HISTORICAL, as of 2026-09-14. Not current:**
 
   | papers | reports | chat_sessions | chat_messages | Qdrant `researchmind_v2` |
   |---|---|---|---|---|
   | 3 | 0 | 1 | 6 | 220 |
 
-  All 220 points belong to paper `f8d48357-a77b-5d9e-a0c2-7ff24b25a580`
-  (`status = indexed`). The one chat session and six messages are genuine D2
-  browser-QA rows, intentionally retained. The other two `papers` rows have
-  `status = failed` (see §8 item 3).
+  These were the counts when this section was first written. They are **known to
+  be stale** — at minimum `reports` and `paper_intelligence` rows now exist from
+  later work and from production QA. **Current values are unverified**: refreshing
+  them requires a separate, separately approved read-only database verification,
+  and no such query was run for this reconciliation. Note also that under forced
+  RLS a `SELECT COUNT(*)` as `researchmind_app` with no JWT claim bound returns
+  zero rows for every table, so any refresh must use `pg_stat_user_tables` or run
+  with claims bound.
 
-### Deployment status — NOT DEPLOYED
+### Deployment status — DEPLOYED
 
-**The completed product exists only locally.** Local PASS is not deployment.
+The former "NOT DEPLOYED" statement in this section, and its comparison against
+`origin/master` at `d83a16f`, are **superseded**. `d83a16f` is now an ancestor of
+`HEAD`; `origin/master` is `ddd6818`; the product is deployed and serving.
 
-| | Local (`cebd105`) | `origin/master` (`d83a16f`) |
-|---|---|---|
-| Date | 2026-09-14 | 2026-06-24 |
-| Authentication | Supabase JWT via JWKS | **none** |
-| Tenant isolation | app filters + forced RLS | **none** |
-| Postgres | `researchmind_app`, RLS forced | **not used** — never reads `DATABASE_URL` |
-| Qdrant collection | `researchmind_v2` | `researchmind` |
-| Environment variables read | 15 | 4 (`GROQ_API_KEY`, `QDRANT_URL`, `QDRANT_API_KEY`, `RERANK_ENABLED`) |
+- **Backend:** Railway. `backend/railway.toml` is the deployment configuration in
+  the repository — `builder = "NIXPACKS"`, `startCommand = uvicorn app.main:app`,
+  `healthcheckPath = "/health"`. `GET /health` returns HTTP 200 with
+  `Server: railway-hikari`.
+- **Deployment is still not a defined roadmap phase.** It is recorded here as
+  current operational state. Any further deployment change needs its own approved
+  plan.
 
-- `origin/master` is **pre-Phase-1.5** and is **not equivalent** to the local
-  completed product. It lacks Phases 1.5, 2, D1, D2 and C1 entirely.
-- Commits `e144ab0` and `cebd105` have **not** been pushed.
-- `render.yaml` sets **`autoDeploy: true`** — pushing to `master` deploys.
-- `render.yaml` declares only `GROQ_API_KEY`, `QDRANT_URL` and `QDRANT_API_KEY`.
-  The local product also requires `DATABASE_URL`, `SUPABASE_URL`,
-  `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` and `VOYAGE_API_KEY`.
-- Whether any service is currently live, which provider hosts it (`render.yaml`
-  names Render; the last commit message names Railway), and which environment
-  variables it holds are **not visible from the repository**.
-- The forced RLS lives in the shared Supabase project. Deployed code at
-  `d83a16f` never connects to Postgres, so it is unaffected by it.
-- **Deployment is not a defined roadmap phase.** It requires its own separately
-  approved plan.
+**The deployed Git SHA has never been directly verified.** This limitation is
+recorded precisely rather than glossed:
+
+- The backend **exposes no build or commit identifier**. `GET /health` returns a
+  hard-coded `"version": "3.1.0"` that has not changed since the initial commit,
+  so it is constant across every revision. No Railway response header carries a
+  revision or deployment id.
+- The active deployment was **indirectly identified** from the Railway dashboard's
+  deployment **commit message**, `fix: raise paper intelligence completion
+  budget`, which `git log --all` shows belongs to exactly one commit, `ddd6818`.
+  That is a one-to-one message↔commit mapping, **not** a read of the SHA itself.
+- Neither the Railway CLI nor an authenticated session is available from the
+  development environment, so deployment could not be verified programmatically.
+- Consequence: this absent build identifier blocked deployment verification across
+  four separate gates. Adding one would make future verification a single
+  unauthenticated request. It is **not** a defined phase and is listed only as
+  technical debt (§7 item 12).
+
+**Stale `render.yaml` — documented, not modified.** The repository still contains a
+root `render.yaml` naming a Render service `researchmind-api` with
+**`autoDeploy: true`**, declaring only `GROQ_API_KEY`, `QDRANT_URL` and
+`QDRANT_API_KEY`. It does not describe the live deployment, which is Railway. A
+second auto-deploy configuration pointing at a different platform is an
+operational hazard as well as a documentation one, and it requires **separate
+review**; it was deliberately left untouched by this reconciliation. See §7
+item 13.
 
 ---
 
@@ -403,8 +607,19 @@ Additional gates, all honoured:
 
 **No defined major roadmap phase remains.** Count: **0**.
 
-C1 was the last phase defined in this project. None are invented here. Items in
-sections 7 and 8 are a backlog, not phases, and deployment (§3) is not a defined
+C1 was the last item defined in this project as a *major phase*. The work in §2b
+landed after it in smaller separately approved steps, the most recent being Phase
+3.5, which is CLOSED. Re-checked on 2026-09-27 against the repository: the strings
+`Phase 4` and `Phase 5` appear **zero** times outside this document — in
+`backend/app`, `backend/tests`, `backend/migrations`, `research-compass-main/src`,
+or anywhere in `docs` other than `MASTER_ROADMAP.md` itself; the only "next phase"
+text anywhere is this document's own Summary row; and there are **no**
+`TODO`/`FIXME`/`XXX`/`HACK` comments in application or frontend source. So there is
+not even an informal backlog that could be mistaken for a defined phase.
+
+None are invented here. Items in sections 7 and 8 are a backlog, not phases;
+deployment (§3) is current operational state, not a defined phase; and the
+quote-quality directions in §9 are future work requiring a product decision, not a
 phase.
 
 No completion percentage is given: with no original roadmap document there is no
@@ -412,51 +627,83 @@ denominator, and inventing one would be fabrication.
 
 ---
 
-## 7. Optional technical debt (11 items, 2 resolved)
+## 7. Optional technical debt (13 items, 2 resolved)
+
+Re-checked on 2026-09-27. Items 4 and 5 were confirmed still open by direct
+inspection; item 5's line number had drifted. Items 12 and 13 are new and are
+referenced from §3.
 
 | # | Item | Location |
 |---|---|---|
 | 1 | `UserMemoryStore` has **no eviction** — `get`/`clear`/`owner_count` only; the dict grows unbounded per owner | `app/memory.py` |
 | 2 | `last_research_query/report/context/sources` and `last_citations` are now **write-only** — D2 step 3 removed export's reads while `research.py` still writes them | `app/memory.py`, `app/api/research.py` |
 | 3 | Dead SSE `"sources"` field duplicating `"citations"` in the `done` event | `app/api/ask_stream.py:325` |
-| 4 | 8 debug `print()` calls, including the user's query, written to stdout | `app/api/research.py` |
-| 5 | Hardcoded `"researchmind"` collection label (actual collection is `researchmind_v2`) | `src/routes/dashboard.tsx:79` |
+| 4 | 8 debug `print()` calls, including the user's query, written to stdout. **Confirmed still open 2026-09-27** — exactly 8 `print(` remain, and line 73 is `print(f"Query: {query}")` | `app/api/research.py` |
+| 5 | Hardcoded `"researchmind"` collection label (actual collection is `researchmind_v2`). **Confirmed still open 2026-09-27**; the line has drifted from 79 to **83** | `src/routes/dashboard.tsx:83` |
 | 6 | ~~Two stale PDFs from June left in the working directory~~ **Resolved 2026-09-14** — deleted in the local generated-artifact cleanup (ignored files, never committed) | `backend/` |
 | 7 | ~~Older `docs/` files stale, empty, or contradictory~~ **Resolved 2026-09-14** — `ROADMAP.md`, `ARCHITECTURE.md`, `API_REFERENCE.md` and `PROJECT_CONTEXT.md` deleted (see the header note) | `docs/` |
 | 8 | Reranking disabled by default (`RERANK_ENABLED=false`) to keep memory low; retrieval quality is unreranked | `app/rag/reranker.py` |
 | 9 | `GRANT USAGE ON SCHEMA auth TO researchmind_app` **granted nothing** — `postgres` does not own schema `auth`. Policies still evaluate `auth.uid()` correctly; only a *direct* `SELECT auth.uid()` by the app role is denied | Supabase `auth` schema |
 | 10 | Policies rely on the **implicit** `WITH CHECK` (Postgres reuses `USING` for writes). Correct today, but an edit to `USING` alone would silently change write rules. Explicit `WITH CHECK` (5b) was deferred | migrations 0001, 0003 |
-| 11 | **Secret hygiene pending:** the `researchmind_app` password and two copies of the `postgres` password exist in a session scratchpad (outside the repository, never committed, absent from git history and transcripts); the repository sits under the OneDrive root, so `backend/.env` may be cloud-synced; rotation of both passwords is recommended before any deployment | local only |
+| 11 | **Secret hygiene — PARTLY ADDRESSED.** Originally: the `researchmind_app` password and two copies of the `postgres` password existed in a session scratchpad (outside the repository, never committed, absent from git history and transcripts), and the repository sits under the OneDrive root so `backend/.env` may be cloud-synced. A credential rotation **was** carried out in a later security-incident response, after this item was written. Marked partly addressed rather than resolved: the rotation is not verifiable from the repository, and the OneDrive-sync exposure of `backend/.env` is unchanged | local only |
+| 12 | **The backend exposes no build or commit identifier.** `GET /health` returns a hard-coded `"version": "3.1.0"`, unchanged since the initial commit, and no response header carries a revision. The deployed SHA therefore cannot be verified by request — this blocked deployment verification across four gates (§3). Not a defined phase | `app/main.py` health endpoint |
+| 13 | **Stale `render.yaml` with `autoDeploy: true`.** Names a Render service while the live deployment is Railway (`backend/railway.toml`), and declares only 3 of the environment variables the product needs. A second auto-deploy configuration for a different platform is an operational hazard; **requires separate review** and was deliberately not modified during the 2026-09-27 documentation reconciliation | `render.yaml` |
 
 ---
 
-## 8. Known pre-existing bugs (9 items)
+## 8. Known pre-existing bugs (9 items — 2 resolved, 1 with resolution evidence, 1 unverified)
+
+Reconciled 2026-09-27. Items 1 and 5 were fixed by later work; item 8 has
+resolution evidence but was not exhaustively re-verified; item 2 was **not**
+verified during the reconciliation and is marked as such rather than guessed at.
+The remaining items were not re-tested and are carried forward unchanged.
 
 | # | Bug | Impact |
 |---|---|---|
-| 1 | CORS entry `"https://*.vercel.app"` **never matches** — Starlette does exact origin matching, not globbing | Vercel preview deployments are blocked. Fails closed, so not a security hole — but a **blocker for any deployment** that uses preview URLs |
-| 2 | `/export-report` returns **HTTP 200 with a JSON error body** when no report exists | `response.ok` is true, so the browser saves a JSON file named `research-report.pdf`. A `404` would fix it |
+| 1 | ~~CORS entry `"https://*.vercel.app"` **never matches**~~ **RESOLVED** — `main.py` now uses `allow_origins=get_allowed_origins()` from `app/core/cors.py`, with optional `CORS_EXTRA_ORIGINS`. Commit `7dd86f0`, `tests/test_cors_config.py` | Was a blocker for preview-URL deployments; no longer applies |
+| 2 | `/export-report` returns **HTTP 200 with a JSON error body** when no report exists — **UNVERIFIED as of 2026-09-27.** `app/api/export_report.py` exists and a `/latest-report` endpoint was added later (`f04f672`, `tests/test_latest_report.py`), but the no-report status code was **not** re-checked during reconciliation. Neither resolved nor unresolved is claimed | If still present: `response.ok` is true, so the browser saves a JSON file named `research-report.pdf`. A `404` would fix it |
 | 3 | Papers with `status='failed'` are **invisible in the UI** — 2 of 3 current rows | Users cannot see or retry failed uploads |
 | 4 | `FOLLOW_UP_WORDS` matching is **substring-based** — "net**work**s" contains "work" | Ordinary questions misread as follow-ups, silently prepending a stale topic |
-| 5 | `research.py` returns **raw exception strings** to the client | Possible internal detail disclosure |
+| 5 | ~~`research.py` returns **raw exception strings** to the client~~ **RESOLVED** — the client-facing path now goes through `classify_provider_error()` and `internal_error_payload()`. A `print(f"Research Error: {str(e)}")` remains at `research.py:344`, which is a **server-side log**, not client exposure (and overlaps §7 item 4). Commit `8a49ea9`, `tests/test_internal_error_sanitization.py` | Client-facing internal-detail disclosure closed |
 | 6 | `eslint .` fails with **917 errors** (843 are CRLF/prettier line-ending issues) | Pre-existing repo-wide; files untouched by recent work also fail |
 | 7 | **No token revocation** | A signed-out user's JWT remains valid until expiry |
-| 8 | Single-paper answer lock | Questions spanning two papers cannot be answered |
+| 8 | Single-paper answer lock — **RESOLUTION EVIDENCE.** Commit `9d63bb1` ("allow new Ask questions to span multiple papers") with `tests/test_e2_multi_paper_retrieval.py`, and `3efbda1` with `tests/test_e2b_evidence_diversity.py`, address exactly this. Recorded as resolution evidence rather than confirmed-resolved: the behaviour was **not** exhaustively re-verified during reconciliation | Questions spanning two papers were previously unanswerable |
 | 9 | Ingestion noise — roughly 6.1% of chunks contain line-number artifacts | Would require a re-index to correct |
 
 ---
 
 ## 9. Deferred / out of scope
 
-**Major roadmap work:** none defined. C1 is complete (§2, §4).
+**Major roadmap work:** none defined. C1 was the last major phase (§2, §4); the
+later work in §2b is complete, with Phase 3.5 CLOSED.
 
-**Deployment:** not deployed and not a defined phase (§3). Requires its own
-separately approved plan.
+**Deployment:** **now deployed** on Railway (§3), and still **not** a defined
+phase — it is current operational state. Any further deployment change requires
+its own separately approved plan.
 
-**Optional cleanup:** 9 open items in section 7 (2 resolved). None blocking the local product.
+**Optional cleanup:** 11 open items of 13 in section 7 (items 6 and 7 resolved,
+item 11 partly addressed). None blocking.
 
-**Known bugs:** the 9 items in section 8. None blocking the local product;
-several are one-line fixes. Item 1 blocks preview deployments.
+**Known bugs:** the 9 items in section 8 — items 1 and 5 resolved, item 8 with
+resolution evidence, item 2 unverified, the rest carried forward untested. Several
+are one-line fixes.
+
+**Quote-quality improvements — FUTURE WORK, not a phase.** Phase 3.5 measured a
+~4.6% structural ceiling for byte-exact span copying and a 6.2% production keep
+rate (§2b). The directions the evidence supports investigating are listed below.
+They are **not ranked**, **none is selected**, and none is a defined phase; taking
+any of them up is a product decision this document does not make:
+
+- bounded normalized comparison while preserving the original chunk's text;
+- improved quote-selection instructions in the generation prompt;
+- richer quote telemetry, such as persisting or aggregating tallies;
+- Unicode-variation span tests — ligature, curly quote, dash — the one coverage
+  gap identified in Phase 3.5, given that 42.1% of locally measured candidate
+  spans contain non-ASCII characters;
+- treating the quote as an optional bonus while `(page, chunk_id)` remains the
+  authoritative citation, which is the system's current behaviour;
+- normalizing representation before indexing, which would require a re-index and
+  is constrained by project rule 2.
 
 **Explicitly not part of D2 — not defects:**
 
@@ -530,8 +777,18 @@ These rules were established over the course of the project and remain in force.
 
 ### Deployment safety
 
-15. **Never push to `master` without an approved deployment plan.** `render.yaml`
-    sets `autoDeploy: true`, so a push is a deployment.
+15. **Never push to `master` without an approved deployment plan. A push is a
+    deployment.** The live backend is on **Railway**, configured by
+    `backend/railway.toml`, and it builds from this repository. The stale root
+    `render.yaml` **also** still sets `autoDeploy: true` for a Render service
+    (§7 item 13), so two platforms are nominally armed against `master`; that
+    needs separate review. Corrected 2026-09-27 — this rule previously named only
+    Render.
+16. **The deployed revision cannot be confirmed by request.** The backend exposes
+    no build identifier (§7 item 12), so a deployment claim must either cite the
+    Railway dashboard or say plainly that the SHA was not directly verified. Do
+    not infer a deployed commit from a clean tree, matching git refs, a healthy
+    `/health`, or the fact that auto-deploy usually works.
 
 ---
 
@@ -539,12 +796,15 @@ These rules were established over the course of the project and remain in force.
 
 | | |
 |---|---|
-| **Current phase** | C1 — RLS Hardening: **COMPLETE / PASS** |
+| **Last completed work** | Phase 3.5 — Quote observability and completion-budget hardening: **COMPLETE / CLOSED** |
+| **Last defined major phase** | C1 — RLS Hardening: **COMPLETE / PASS** |
 | **Next phase** | **None defined** |
 | **Major phases remaining** | **0** |
-| **Local git `HEAD`** | `cebd105` — local only, not pushed |
-| **Deployment** | **NOT DEPLOYED** — `origin/master` is `d83a16f`, pre-Phase-1.5, not equivalent to the local product |
-| **Validation baseline** | papers 3 · reports 0 · chat_sessions 1 · chat_messages 6 · Qdrant 220 |
-| **Optional cleanup items** | 9 open (2 resolved) |
-| **Known pre-existing bugs** | 9 |
-| **Blockers** | None for the local product. Any deployment needs its own approved plan: required environment variables, secret rotation, CORS fix, and control over `autoDeploy`. |
+| **Git `HEAD`** | `ddd6818` — `origin/master` matches; tree was clean before this documentation update, which is the only working-tree modification until committed |
+| **Migrations** | 6 applied (`0001`–`0006`); no `0007` |
+| **Deployment** | **DEPLOYED** — Railway, `backend/railway.toml`, `/health` returns 200. Deployed SHA **not directly verified**: no build identifier exists, so `ddd6818` was identified only indirectly, via the deployment's commit message |
+| **Validation baseline** | **HISTORICAL (2026-09-14)** — papers 3 · reports 0 · chat_sessions 1 · chat_messages 6 · Qdrant 220. **Current values unverified**; refreshing them needs a separate approved read-only database check |
+| **Test suite** | 1292 tests, 0 failed, 7 skipped |
+| **Optional cleanup items** | 11 open of 13 (2 resolved, 1 partly addressed) |
+| **Known pre-existing bugs** | 9 listed — 2 resolved, 1 with resolution evidence, 1 unverified |
+| **Blockers** | None identified for the current product. Outstanding operational concerns: the stale `render.yaml` with `autoDeploy: true` on a second platform, and the absent build identifier that prevents deployed-SHA verification. |
