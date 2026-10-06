@@ -51,6 +51,9 @@ vi.mock("@/lib/api", () => ({
   // to inert values rather than exercised here.
   getPaperFileUrl: vi.fn().mockRejectedValue(new Error("not used in this suite")),
   streamAskQuestion: vi.fn(),
+  // The Intelligence panel checks its read error against this type while
+  // rendering, so the inert stub has to provide it.
+  PaperIntelligenceNotFoundError: class extends Error {},
   partitionCitations: (c: any[]) => ({
     cited: c.filter((x) => x.cited),
     alsoRetrieved: c.filter((x) => !x.cited),

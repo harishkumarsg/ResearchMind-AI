@@ -71,6 +71,15 @@ export const queryKeys = {
     paperBId: string,
   ) => ["paper-relationship", userId, ...[paperAId, paperBId].sort()] as const,
 
+  /**
+   * Prefix covering every relationship this user has cached. Regenerating
+   * a paper's analysis can make any relationship built on it stale, and
+   * the server decides staleness when it is read — so the cached copies
+   * are invalidated rather than patched.
+   */
+  paperRelationshipsForUser: (userId: string | undefined) =>
+    ["paper-relationship", userId] as const,
+
   stats: (userId?: string) => ["stats", userId] as const,
 
   /** The owner's most recent stored report, restored on page load. */

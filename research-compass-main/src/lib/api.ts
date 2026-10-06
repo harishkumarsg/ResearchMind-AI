@@ -607,6 +607,34 @@ export interface PaperIntelligenceResult {
   superseded: boolean;
 }
 
+/** A POST response: the stored object plus what that run used. */
+export interface GeneratedPaperIntelligenceResult extends PaperIntelligenceResult {
+  chunks_used?: number;
+  pages_covered?: number;
+}
+
+/**
+ * The read endpoint's 404: the paper does not exist, is malformed, or is
+ * someone else's — one answer for all three.
+ *
+ * Typed so the panel can tell "this paper is not yours to analyse" (offer
+ * nothing) apart from every other read failure, such as a stored row that
+ * no longer parses, whose own message tells the user to generate again.
+ * The message is unchanged from before this type existed.
+ */
+export class PaperIntelligenceNotFoundError extends Error {
+  constructor(message = "Paper not found.") {
+    super(message);
+    this.name = "PaperIntelligenceNotFoundError";
+  }
+}
+
+function paperIntelligenceUrl(paperId: string): string {
+  // The id travels as a query parameter; the token travels in the
+  // Authorization header via authFetch and is never placed in a URL.
+  return `${API_BASE_URL}/paper-intelligence?paper_id=${encodeURIComponent(paperId)}`;
+}
+
 /**
  * The stored analysis for one of the caller's own papers.
  *
@@ -622,12 +650,10 @@ export interface PaperIntelligenceResult {
 export async function getPaperIntelligence(
   paperId: string,
 ): Promise<PaperIntelligenceResult | null> {
-  const response = await authFetch(
-    `${API_BASE_URL}/paper-intelligence?paper_id=${encodeURIComponent(paperId)}`,
-  );
+  const response = await authFetch(paperIntelligenceUrl(paperId));
 
   if (response.status === 404) {
-    throw new Error("Paper not found.");
+    throw new PaperIntelligenceNotFoundError();
   }
 
   const data = await response.json();
@@ -642,6 +668,54 @@ export async function getPaperIntelligence(
   }
 
   return data as PaperIntelligenceResult;
+}
+
+const GENERATE_INTELLIGENCE_FAILED = "The paper analysis could not be completed.";
+
+/**
+ * Generate — or regenerate — the structured analysis of one of the
+ * caller's own papers. Only ever called from an explicit user action.
+ *
+ * Charges one AI generation on the server, and only once the request is
+ * about to reach the model: a paper that is missing, someone else's or not
+ * yet indexed is refused before any charge. The server decides ownership
+ * from the verified JWT; nothing here sends an owner id.
+ *
+ * Never retried automatically, here or by the caller. A retry would spend
+ * another unit, and a failed run has already left any existing analysis
+ * exactly as it was.
+ *
+ * Error handling follows the summarize/report convention rather than the
+ * relationship one: the body is parsed whatever the status, so a daily
+ * quota 429 keeps the backend's authored wording ("You've reached today's
+ * limit…"), while throttling still becomes RateLimitError via
+ * throwForErrorBody. A response that is not JSON, or a request that never
+ * completed, becomes an authored message rather than a raw parser or
+ * browser error.
+ */
+export async function generatePaperIntelligence(
+  paperId: string,
+): Promise<GeneratedPaperIntelligenceResult> {
+  let response: Response;
+  try {
+    response = await authFetch(paperIntelligenceUrl(paperId), { method: "POST" });
+  } catch (err) {
+    if (err instanceof AuthenticationRequiredError) throw err;
+    throw new Error(GENERATE_INTELLIGENCE_FAILED);
+  }
+
+  let data: { status?: unknown; message?: unknown };
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error(GENERATE_INTELLIGENCE_FAILED);
+  }
+
+  if (data.status !== "success") {
+    throwForErrorBody(data, GENERATE_INTELLIGENCE_FAILED);
+  }
+
+  return data as unknown as GeneratedPaperIntelligenceResult;
 }
 
 // ============================================================

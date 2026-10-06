@@ -19,7 +19,10 @@ import {
   uploadPaper,
   describeIndexResult,
   partitionCitations,
+  generatePaperIntelligence,
+  getPaperIntelligence,
   AuthenticationRequiredError,
+  PaperIntelligenceNotFoundError,
   RateLimitError,
   type IndexResult,
   type Citation,
@@ -517,5 +520,205 @@ describe("partitionCitations — splits on the backend flag, never re-derives it
 
     expect(cited).toEqual([]);
     expect(alsoRetrieved).toHaveLength(1);
+  });
+});
+
+describe("generatePaperIntelligence — explicit, metered, never retried", () => {
+  const PAPER_ID = "11111111-1111-1111-1111-111111111111";
+
+  function json(body: unknown, status = 200) {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const stored = {
+    status: "success",
+    paper_id: PAPER_ID,
+    paper: "ETASR_18859.pdf",
+    intelligence: {},
+    generated_at: "2026-09-22T11:30:00+00:00",
+    model: "openai/gpt-oss-120b",
+    schema_version: "2",
+    superseded: false,
+    chunks_used: 12,
+    pages_covered: 9,
+  };
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    mockSupabaseWithSession("test-access-token-123");
+  });
+
+  it("POSTs to the existing endpoint with the paper id as an encoded query parameter", async () => {
+    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(json(stored));
+
+    await generatePaperIntelligence("a b/c?d");
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, options] = fetchSpy.mock.calls[0];
+    expect(String(url)).toMatch(/\/paper-intelligence\?paper_id=a%20b%2Fc%3Fd$/);
+    expect(options?.method).toBe("POST");
+    // The endpoint takes no body.
+    expect(options?.body).toBeUndefined();
+  });
+
+  it("sends the bearer token, and never puts it in the URL", async () => {
+    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(json(stored));
+
+    await generatePaperIntelligence(PAPER_ID);
+
+    const [url, options] = fetchSpy.mock.calls[0];
+    expect(new Headers(options?.headers).get("Authorization")).toBe(
+      "Bearer test-access-token-123",
+    );
+    expect(String(url)).not.toContain("test-access-token-123");
+  });
+
+  it("returns the stored object and its response metadata on success", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(json(stored));
+
+    const result = await generatePaperIntelligence(PAPER_ID);
+
+    expect(result.paper_id).toBe(PAPER_ID);
+    expect(result.superseded).toBe(false);
+    expect(result.chunks_used).toBe(12);
+    expect(result.pages_covered).toBe(9);
+  });
+
+  it("throws the backend's authored message for a 200 error body", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      json({
+        status: "error",
+        code: "intelligence_generation_failed",
+        message: "The paper analysis could not be completed. Please try again.",
+      }),
+    );
+
+    await expect(generatePaperIntelligence(PAPER_ID)).rejects.toThrow(
+      "The paper analysis could not be completed. Please try again.",
+    );
+  });
+
+  it("keeps the authored daily-quota wording from a 429", async () => {
+    const message = "You've reached today's limit for AI answers (50). It resets at 00:00 UTC.";
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      json({ status: "error", code: "quota_exceeded", message, retry_after_seconds: 3600 }, 429),
+    );
+
+    const error = await generatePaperIntelligence(PAPER_ID).catch((e) => e);
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(RateLimitError);
+    expect(error.message).toBe(message);
+  });
+
+  it("turns a burst rate-limit 429 into RateLimitError", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      json(
+        {
+          status: "error",
+          code: "rate_limited",
+          message: "Too many requests. Please wait about 12 seconds and try again.",
+          retry_after_seconds: 12,
+        },
+        429,
+      ),
+    );
+
+    await expect(generatePaperIntelligence(PAPER_ID)).rejects.toBeInstanceOf(RateLimitError);
+  });
+
+  it("turns upstream throttling in a 200 body into RateLimitError", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      json({ status: "error", message: "Rate limit exceeded for this organization." }),
+    );
+
+    await expect(generatePaperIntelligence(PAPER_ID)).rejects.toBeInstanceOf(RateLimitError);
+  });
+
+  it("makes exactly one request and never retries a failure", async () => {
+    const fetchSpy = vi
+      .spyOn(global, "fetch")
+      .mockResolvedValue(json({ status: "error", message: "Paper not found." }));
+
+    await expect(generatePaperIntelligence(PAPER_ID)).rejects.toThrow("Paper not found.");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry a network failure, and reports it in authored words", async () => {
+    const fetchSpy = vi.spyOn(global, "fetch").mockRejectedValue(new TypeError("Failed to fetch"));
+
+    await expect(generatePaperIntelligence(PAPER_ID)).rejects.toThrow(
+      "The paper analysis could not be completed.",
+    );
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not surface a parser error for a non-JSON response", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response("<html>Bad Gateway</html>", { status: 502 }),
+    );
+
+    await expect(generatePaperIntelligence(PAPER_ID)).rejects.toThrow(
+      "The paper analysis could not be completed.",
+    );
+  });
+
+  it("throws AuthenticationRequiredError and never calls fetch without a session", async () => {
+    mockSupabaseWithSession(null);
+    const fetchSpy = vi.spyOn(global, "fetch");
+
+    await expect(generatePaperIntelligence(PAPER_ID)).rejects.toThrow(
+      AuthenticationRequiredError,
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("getPaperIntelligence — a 404 is typed, everything else is unchanged", () => {
+  const PAPER_ID = "11111111-1111-1111-1111-111111111111";
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    mockSupabaseWithSession("test-access-token-123");
+  });
+
+  it("throws PaperIntelligenceNotFoundError with the same message for a 404", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ status: "error", message: "Paper not found." }), {
+        status: 404,
+      }),
+    );
+
+    const error = await getPaperIntelligence(PAPER_ID).catch((e) => e);
+
+    expect(error).toBeInstanceOf(PaperIntelligenceNotFoundError);
+    expect(error.message).toBe("Paper not found.");
+  });
+
+  it("keeps an unreadable stored row as an ordinary, non-404 error", async () => {
+    const message =
+      "The stored analysis for this paper could not be read. Generating it again will replace it.";
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ status: "error", code: "invalid_json", message }), {
+        status: 200,
+      }),
+    );
+
+    const error = await getPaperIntelligence(PAPER_ID).catch((e) => e);
+
+    expect(error).not.toBeInstanceOf(PaperIntelligenceNotFoundError);
+    expect(error.message).toBe(message);
+  });
+
+  it("still reads not_generated as null, with a GET", async () => {
+    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ status: "not_generated" }), { status: 200 }),
+    );
+
+    await expect(getPaperIntelligence(PAPER_ID)).resolves.toBeNull();
+    expect(fetchSpy.mock.calls[0][1]?.method).toBeUndefined();
   });
 });
