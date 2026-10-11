@@ -45,11 +45,44 @@ export const Route = createFileRoute("/paper/$paperName")({
   component: PaperDetailsPage,
 });
 
+/**
+ * The route component. It does one thing: give each paper its own
+ * workspace instance.
+ *
+ * WHY THE KEY IS NOT OPTIONAL
+ * ---------------------------
+ * A link from one paper to another does not remount this route. The
+ * router identifies a route's element by its route id, and re-renders
+ * the same component with new params — it would remount only if a
+ * `remountDeps` option were configured, and none is. Left alone, every
+ * piece of state the workspace holds would therefore outlive the paper
+ * it was produced for: the previous paper's AI summary shown under this
+ * one, the viewer opened at the previous paper's page, its errors, its
+ * Ask answer, its open evidence inspector.
+ *
+ * Each of those is a claim about ONE paper, and none of it is true of
+ * the next. Keying on the paper name makes that structural rather than
+ * something each `useState` has to remember: a different paper is a
+ * different workspace, starting from nothing, and a result that arrives
+ * late for the paper the reader has left has no component to land in.
+ *
+ * Keyed on the paper name ONLY. `?page=N` is not part of the key — the
+ * same paper at a different page is still the same paper, and starting
+ * over would throw away work the reader asked for.
+ *
+ * Nothing cached is discarded by this: the paper's details, analysis and
+ * source passages live in the query cache, above this component.
+ */
 function PaperDetailsPage() {
+  const { paperName } = Route.useParams();
+
+  return <PaperWorkspace key={paperName} paperName={paperName} />;
+}
+
+function PaperWorkspace({ paperName }: { paperName: string }) {
   // Signed-out visitors are sent to the public landing page.
   useRequireAuth();
 
-  const { paperName } = Route.useParams();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { user } = useAuth();
