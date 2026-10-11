@@ -719,6 +719,94 @@ export async function generatePaperIntelligence(
 }
 
 // ============================================================
+// Evidence passages — the source text behind a stored analysis
+// ============================================================
+
+/**
+ * One cited reference, resolved by the server to the chunk it names.
+ *
+ * `text` is present only when `status` is "found", and is then the chunk
+ * exactly as it is stored — extracted from the PDF, never written by a
+ * model. Every other status ("missing_chunk", "duplicate_chunk_identity",
+ * "malformed_payload", "over_budget") carries no text: the server never
+ * substitutes a different chunk for one it could not resolve.
+ */
+export interface EvidencePassage {
+  page: number;
+  chunk_id: number;
+  status: string;
+  text: string | null;
+}
+
+export interface PaperEvidenceResult {
+  paper_id: string;
+  generated_at: string;
+  /**
+   * The paper's record changed after the analysis was generated, which
+   * every re-index does. A caution about the paper as a whole — it does
+   * not say that any particular passage changed.
+   */
+  reindexed_since_analysis: boolean;
+  items: EvidencePassage[];
+}
+
+const EVIDENCE_UNAVAILABLE = "The source text could not be loaded.";
+
+/**
+ * The source passages behind the stored analysis of one of the caller's
+ * own papers.
+ *
+ * Read-only on the server, and cheap: an exact lookup of the chunks the
+ * stored analysis cites. No model call, no generation, no AI allowance
+ * spent. The server chooses which chunks to return — the request names a
+ * paper and nothing else — and decides ownership from the verified JWT.
+ *
+ * Returns null when the paper has no stored analysis, so there is nothing
+ * to resolve. Never retried here.
+ *
+ * A response that is not JSON, or a request that never completed, becomes
+ * an authored message rather than a raw parser or browser error.
+ */
+export async function getPaperEvidence(paperId: string): Promise<PaperEvidenceResult | null> {
+  let response: Response;
+  try {
+    response = await authFetch(
+      `${API_BASE_URL}/paper-evidence?paper_id=${encodeURIComponent(paperId)}`,
+    );
+  } catch (err) {
+    if (err instanceof AuthenticationRequiredError) throw err;
+    throw new Error(EVIDENCE_UNAVAILABLE);
+  }
+
+  if (response.status === 404) {
+    // Unknown, malformed and another owner's paper are one answer.
+    throw new PaperIntelligenceNotFoundError();
+  }
+
+  let data: { status?: unknown; message?: unknown; items?: unknown };
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error(EVIDENCE_UNAVAILABLE);
+  }
+
+  // The owner's paper, with no analysis stored: nothing to resolve.
+  if (data.status === "not_generated") {
+    return null;
+  }
+
+  if (data.status !== "success") {
+    throwForErrorBody(data, EVIDENCE_UNAVAILABLE);
+  }
+
+  if (!Array.isArray(data.items)) {
+    throw new Error(EVIDENCE_UNAVAILABLE);
+  }
+
+  return data as unknown as PaperEvidenceResult;
+}
+
+// ============================================================
 // Paper relationship — the AI tier over two papers
 // ============================================================
 

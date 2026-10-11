@@ -49,6 +49,35 @@ export const queryKeys = {
     ["paper-intelligence", userId, paperId] as const,
 
   /**
+   * The source passages behind one paper's stored Paper Intelligence.
+   *
+   * Keyed on the user and the paper for the same two reasons as
+   * `paperIntelligence`. Its own namespace rather than a child of
+   * ["paper-intelligence", ...]: React Query matches by prefix, the two
+   * hold different shapes, and a passage is fetched only once a reader
+   * opens an evidence reference — writing or invalidating the analysis
+   * must not silently start that request.
+   *
+   * `generatedAt` is the stored analysis's own stamp, and it is part of
+   * the key because the passages are the answer to "what do THIS
+   * analysis's references point at". A different analysis of the same
+   * paper cites a different set of references, so it must never be
+   * served the previous one's result — and the displayed analysis can
+   * change without anything here being told: a regeneration in another
+   * tab, or one that failed in the browser but was saved on the server.
+   * Keying on the version makes every such change a cache miss by
+   * construction, instead of relying on each path remembering to
+   * invalidate.
+   *
+   * Without `generatedAt` this is the PREFIX covering every version of
+   * one user's paper — still scoped to that user and that paper.
+   */
+  paperEvidence: (userId: string | undefined, paperId: string, generatedAt?: string) =>
+    generatedAt === undefined
+      ? (["paper-evidence", userId, paperId] as const)
+      : (["paper-evidence", userId, paperId, generatedAt] as const),
+
+  /**
    * One owner's generated relationship for an UNORDERED pair of papers.
    *
    * The two ids are SORTED into the key. That is load-bearing rather than

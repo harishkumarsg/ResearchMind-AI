@@ -20,6 +20,7 @@ import {
   describeIndexResult,
   partitionCitations,
   generatePaperIntelligence,
+  getPaperEvidence,
   getPaperIntelligence,
   AuthenticationRequiredError,
   PaperIntelligenceNotFoundError,
@@ -720,5 +721,183 @@ describe("getPaperIntelligence — a 404 is typed, everything else is unchanged"
 
     await expect(getPaperIntelligence(PAPER_ID)).resolves.toBeNull();
     expect(fetchSpy.mock.calls[0][1]?.method).toBeUndefined();
+  });
+});
+
+describe("getPaperEvidence — a cheap read, never a generation", () => {
+  const PAPER_ID = "11111111-1111-1111-1111-111111111111";
+
+  function json(body: unknown, status = 200) {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const served = {
+    status: "success",
+    paper_id: PAPER_ID,
+    generated_at: "2026-09-22T11:30:00+00:00",
+    reindexed_since_analysis: false,
+    items: [
+      { page: 3, chunk_id: 0, status: "found", text: "METHODOLOGY.\nA two-stage framework." },
+      { page: 7, chunk_id: 0, status: "missing_chunk", text: null },
+    ],
+  };
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    mockSupabaseWithSession("test-access-token-123");
+  });
+
+  it("GETs the evidence endpoint with the paper id as an encoded query parameter", async () => {
+    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(json(served));
+
+    await getPaperEvidence("a b/c?d");
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, options] = fetchSpy.mock.calls[0];
+    expect(String(url)).toMatch(/\/paper-evidence\?paper_id=a%20b%2Fc%3Fd$/);
+    // A read: no method override, and nothing sent in a body.
+    expect(options?.method).toBeUndefined();
+    expect(options?.body).toBeUndefined();
+  });
+
+  it("never calls the generation endpoint", async () => {
+    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(json(served));
+
+    await getPaperEvidence(PAPER_ID);
+
+    for (const [url, options] of fetchSpy.mock.calls) {
+      expect(String(url)).not.toContain("/paper-intelligence");
+      expect(options?.method ?? "GET").toBe("GET");
+    }
+  });
+
+  it("sends the bearer token, and never puts it in the URL", async () => {
+    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue(json(served));
+
+    await getPaperEvidence(PAPER_ID);
+
+    const [url, options] = fetchSpy.mock.calls[0];
+    expect(new Headers(options?.headers).get("Authorization")).toBe(
+      "Bearer test-access-token-123",
+    );
+    expect(String(url)).not.toContain("test-access-token-123");
+  });
+
+  it("returns the passages exactly as the server sent them", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(json(served));
+
+    const result = await getPaperEvidence(PAPER_ID);
+
+    expect(result?.reindexed_since_analysis).toBe(false);
+    expect(result?.items).toEqual(served.items);
+    // The text is not trimmed or normalised on the way through.
+    expect(result?.items[0].text).toBe("METHODOLOGY.\nA two-stage framework.");
+    expect(result?.items[1].text).toBeNull();
+  });
+
+  it("carries the re-index caution through unchanged", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      json({ ...served, reindexed_since_analysis: true }),
+    );
+
+    expect((await getPaperEvidence(PAPER_ID))?.reindexed_since_analysis).toBe(true);
+  });
+
+  it("returns null when the paper has no stored analysis", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      json({ status: "not_generated", paper_id: PAPER_ID, message: "No analysis yet." }),
+    );
+
+    await expect(getPaperEvidence(PAPER_ID)).resolves.toBeNull();
+  });
+
+  it("throws the typed not-found error for a 404", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      json({ status: "error", message: "Paper not found." }, 404),
+    );
+
+    const error = await getPaperEvidence(PAPER_ID).catch((e) => e);
+
+    expect(error).toBeInstanceOf(PaperIntelligenceNotFoundError);
+    expect(error.message).toBe("Paper not found.");
+  });
+
+  it("throws the backend's authored message for a 200 error body", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      json({
+        status: "error",
+        code: "internal_error",
+        message: "Something went wrong on our side. Please try again.",
+      }),
+    );
+
+    await expect(getPaperEvidence(PAPER_ID)).rejects.toThrow(
+      "Something went wrong on our side. Please try again.",
+    );
+  });
+
+  it("turns a burst rate-limit 429 into RateLimitError", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      json(
+        {
+          status: "error",
+          code: "rate_limited",
+          message: "Too many requests. Please wait about 12 seconds and try again.",
+          retry_after_seconds: 12,
+        },
+        429,
+      ),
+    );
+
+    await expect(getPaperEvidence(PAPER_ID)).rejects.toBeInstanceOf(RateLimitError);
+  });
+
+  it("rejects a success body with no item list rather than guessing", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      json({ status: "success", paper_id: PAPER_ID, items: "not-a-list" }),
+    );
+
+    await expect(getPaperEvidence(PAPER_ID)).rejects.toThrow(
+      "The source text could not be loaded.",
+    );
+  });
+
+  it("makes exactly one request and never retries a failure", async () => {
+    const fetchSpy = vi
+      .spyOn(global, "fetch")
+      .mockResolvedValue(json({ status: "error", message: "Unavailable." }));
+
+    await expect(getPaperEvidence(PAPER_ID)).rejects.toThrow("Unavailable.");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry a network failure, and reports it in authored words", async () => {
+    const fetchSpy = vi.spyOn(global, "fetch").mockRejectedValue(new TypeError("Failed to fetch"));
+
+    await expect(getPaperEvidence(PAPER_ID)).rejects.toThrow(
+      "The source text could not be loaded.",
+    );
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not surface a parser error for a non-JSON response", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response("<html>Bad Gateway</html>", { status: 502 }),
+    );
+
+    await expect(getPaperEvidence(PAPER_ID)).rejects.toThrow(
+      "The source text could not be loaded.",
+    );
+  });
+
+  it("throws AuthenticationRequiredError and never calls fetch without a session", async () => {
+    mockSupabaseWithSession(null);
+    const fetchSpy = vi.spyOn(global, "fetch");
+
+    await expect(getPaperEvidence(PAPER_ID)).rejects.toThrow(AuthenticationRequiredError);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

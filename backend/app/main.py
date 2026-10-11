@@ -50,6 +50,10 @@ from app.api.paper_intelligence import (
     router as paper_intelligence_router
 )
 
+from app.api.paper_evidence import (
+    router as paper_evidence_router
+)
+
 from app.api.paper_relationship import (
     router as paper_relationship_router
 )
@@ -196,6 +200,11 @@ app.include_router(
 app.include_router(
     paper_intelligence_router,
     tags=["Paper Intelligence"]
+)
+
+app.include_router(
+    paper_evidence_router,
+    tags=["Paper Evidence"]
 )
 
 app.include_router(
