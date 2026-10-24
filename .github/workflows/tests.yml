@@ -1,0 +1,48 @@
+name: tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    # The suite is offline by design: providers are mocked and persistence
+    # runs on in-memory SQLite. These placeholders only satisfy modules that
+    # read configuration at import time. No real secret is used in CI.
+    env:
+      GROQ_API_KEY: ci-placeholder
+      VOYAGE_API_KEY: ci-placeholder
+      QDRANT_URL: http://localhost:1
+      QDRANT_API_KEY: ci-placeholder
+      SUPABASE_URL: http://localhost:1
+      SUPABASE_ANON_KEY: ci-placeholder
+      SUPABASE_SERVICE_ROLE_KEY: ci-placeholder
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r requirements.txt
+      - run: python -m unittest discover -s tests -v
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: research-compass-main
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: research-compass-main/package-lock.json
+      - run: npm ci
+      - run: npm test

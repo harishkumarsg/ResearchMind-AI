@@ -38,6 +38,13 @@ class TestPdfExtractionBaseline(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.pdf_paths = sorted(glob.glob(os.path.join(UPLOAD_DIR, "*.pdf")))
+        # backend/uploads/ is git-ignored, so a fresh clone (and CI) has no
+        # local papers. Skip loudly instead of failing on a missing fixture.
+        if not cls.pdf_paths:
+            raise unittest.SkipTest(
+                f"No local PDFs in {UPLOAD_DIR}; baseline extraction tests "
+                "need the 3 reference papers placed there."
+            )
 
     def test_upload_dir_has_the_expected_three_pdfs(self):
         self.assertEqual(
