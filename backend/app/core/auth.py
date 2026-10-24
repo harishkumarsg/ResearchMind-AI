@@ -49,8 +49,10 @@ def _verify_token_with_key(token: str, signing_key, issuer: str) -> str:
         )
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.PyJWTError as e:
-        raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
+    except jwt.PyJWTError:
+        # Same rule as verify_jwt_and_get_owner_id: never echo library
+        # exception text, which can quote claim values from the token.
+        raise HTTPException(status_code=401, detail="Invalid token")
 
     owner_id = payload.get("sub")
     if not owner_id:

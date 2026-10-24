@@ -90,7 +90,8 @@ AI-powered academic research platform with:
 • Report Export
 • Citation Support
 • Qdrant Vector Search
-• Ollama Local LLM
+• Voyage Embeddings and optional Reranking
+• Groq-hosted LLM Generation
 """,
     version="3.1.0"
 )
@@ -272,7 +273,7 @@ def root():
 
             "Follow-Up Memory",
 
-            "Cross Encoder Reranking",
+            "Voyage Reranking (optional, RERANK_ENABLED)",
 
             "Paper Summarization",
 
@@ -286,9 +287,9 @@ def root():
 
             "Vector Database (Qdrant)",
 
-            "Ollama LLM Integration",
+            "Groq-hosted LLM Generation",
 
-            "Local LLM Research Assistant",
+            "Voyage Embeddings",
 
             "Citation Tracking",
 

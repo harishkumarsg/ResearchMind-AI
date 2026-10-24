@@ -254,7 +254,8 @@ class TestMalformedBearerTokens(unittest.TestCase):
         attacker_key, _ = _make_keypair()
         response = self._get(f"Bearer {self._signed_token(key=attacker_key)}")
         self.assertEqual(response.status_code, 401)
-        self.assertTrue(response.json()["detail"].startswith("Invalid token"))
+        # Exact match: the PyJWT exception text must not leak to the client.
+        self.assertEqual(response.json(), {"detail": "Invalid token"})
 
     def test_unknown_signing_key_is_401_without_echoing_the_header(self):
         kid = "attacker-chosen-kid"
