@@ -2,7 +2,7 @@
 
 A private research workspace for academic PDFs. You upload papers, they are indexed into a vector database, and you can search them, ask questions with answers grounded in cited passages, compare papers, and export reports. Every query is scoped to the signed-in user's own library.
 
-> **Live app:** `https://www.researchmindlab.com` · **Demo video (2 min):** `[ADD LINK]`
+> **Live app:** [www.researchmindlab.com](https://www.researchmindlab.com)
 > Status: personal project, built and maintained by Harish Kumar S G (solo).
 
 ---
