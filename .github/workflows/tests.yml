@@ -44,5 +44,10 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: research-compass-main/package-lock.json
-      - run: npm ci
+      # Temporary CI workaround. The locked nitro prerelease (3.0.260610-beta)
+      # does not satisfy @lovable.dev/vite-tanstack-config's optional peer range
+      # (>=3.0.260603-beta) under npm semver prerelease rules, so a strict
+      # `npm ci` stops with ERESOLVE. This flag reproduces how the existing
+      # lockfile was installed. A proper dependency/lockfile fix is deferred.
+      - run: npm ci --legacy-peer-deps
       - run: npm test
