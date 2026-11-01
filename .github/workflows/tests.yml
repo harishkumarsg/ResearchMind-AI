@@ -31,7 +31,7 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       # requirements.txt is a hashed lock: refuse anything unhashed or unpinned,
       # install wheels only, then confirm the installed set is consistent.
-      - run: pip install --require-hashes --only-binary=:all: -r requirements.txt
+      - run: "pip install --require-hashes --only-binary=:all: -r requirements.txt"
       - run: pip check
       - run: python -m unittest discover -s tests -v
 
