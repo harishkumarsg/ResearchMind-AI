@@ -1,0 +1,182 @@
+{
+  "environment": {
+    "PyMuPDF": "2.0",
+    "implementation": "CPython",
+    "langchain-text-splitters": "1.1.3",
+    "machine": "x86_64",
+    "python": "3.11",
+    "system": "Linux"
+  },
+  "fixtures": {
+    "single_column.pdf": {
+      "chunk_count": 4,
+      "chunks": [
+        {
+          "chunk_count": 2,
+          "chunk_id": 0,
+          "length": 1440,
+          "page": 1,
+          "sha256": "7cea695905ba9c560d21473e29dffe9ba15a3735e765587f00bcdd11bc4adcaa",
+          "start": 0,
+          "total_pages": 3
+        },
+        {
+          "chunk_count": 2,
+          "chunk_id": 1,
+          "length": 893,
+          "page": 1,
+          "sha256": "c54275edc84be39b1d5423642387e71e2647eadf506bf15a1efe5cbe7b1010fc",
+          "start": 1225,
+          "total_pages": 3
+        },
+        {
+          "chunk_count": 2,
+          "chunk_id": 0,
+          "length": 1416,
+          "page": 2,
+          "sha256": "34cf3aee19dc25af4b0403ed98dcf4cb80fa0116ca30da7c419fa5b784b954d8",
+          "start": 0,
+          "total_pages": 3
+        },
+        {
+          "chunk_count": 2,
+          "chunk_id": 1,
+          "length": 1465,
+          "page": 2,
+          "sha256": "dd0ef10b1c96e69972afa7e7102ff8749ac9f4ac9b5582f1cd3c9b2ab6e6b2f4",
+          "start": 1204,
+          "total_pages": 3
+        }
+      ],
+      "fixture_sha256": "4dd713929918819594cb7258254f6851cc9ab429639ed9b8fe719362fd15ab9b",
+      "page_count": 3,
+      "pages": [
+        {
+          "cleaned_length": 2118,
+          "cleaned_sha256": "c7a26ac89d5b217478736490b9abfe2b7824c35eba2931b1763403a271433dbf",
+          "page": 1,
+          "text_length": 2126,
+          "text_sha256": "06a7471795df7cb99965d1e6c5045f18e43c8da8691fd4324f8e092838551e2b"
+        },
+        {
+          "cleaned_length": 2669,
+          "cleaned_sha256": "8275a59d9e21ebd01c5711a9e83c99d9a42351793da1d120cdf144c7d78c4c4a",
+          "page": 2,
+          "text_length": 2677,
+          "text_sha256": "dc22ffebbc9d67fdca3938617d69f746a6c08e55a5ef85a504e84076365a848d"
+        },
+        {
+          "cleaned_length": 43,
+          "cleaned_sha256": "25cdad33bf42484566aaa59aade44fe5553b90cb9c0207e49a0d244b0a9e652b",
+          "page": 3,
+          "text_length": 51,
+          "text_sha256": "91d2bfdd91cbf188030d4709d3aedf913eff9ce1fa8d14537187d3a732d9c7dc"
+        }
+      ]
+    },
+    "two_column.pdf": {
+      "chunk_count": 3,
+      "chunks": [
+        {
+          "chunk_count": 2,
+          "chunk_id": 0,
+          "length": 1459,
+          "page": 1,
+          "sha256": "0891f4eb8550c658b674b76da03175c7f28d6ad787c4a743bfe222f0eea97728",
+          "start": 0,
+          "total_pages": 2
+        },
+        {
+          "chunk_count": 2,
+          "chunk_id": 1,
+          "length": 860,
+          "page": 1,
+          "sha256": "2db4c00027d1d45d405919e037c99b88674556b98cfff0b84097da25b01646d6",
+          "start": 1196,
+          "total_pages": 2
+        },
+        {
+          "chunk_count": 1,
+          "chunk_id": 0,
+          "length": 1325,
+          "page": 2,
+          "sha256": "eaae832fbda1458d1484bd9ee953844ea18614f39e88b51f7c1c4a1a4740a612",
+          "start": 0,
+          "total_pages": 2
+        }
+      ],
+      "fixture_sha256": "3d8ce1c055aabead93f3228c1475071f1a13df7c7e06b64b23643740661ba127",
+      "page_count": 2,
+      "pages": [
+        {
+          "cleaned_length": 2056,
+          "cleaned_sha256": "39c77ff0eda3e3ac8af668a57f9371924d73600f9c4618a7e0ca1a64cf3c1832",
+          "page": 1,
+          "text_length": 2063,
+          "text_sha256": "e57b19ed438d9587d101f97145e056273e79a7fc689ce61a2dd8abac6530010d"
+        },
+        {
+          "cleaned_length": 1325,
+          "cleaned_sha256": "eaae832fbda1458d1484bd9ee953844ea18614f39e88b51f7c1c4a1a4740a612",
+          "page": 2,
+          "text_length": 1332,
+          "text_sha256": "f150de48b43c16da4015fed9d24ff768a1188e23e9438fd4e72de0abc6f26faa"
+        }
+      ]
+    },
+    "typography.pdf": {
+      "chunk_count": 2,
+      "chunks": [
+        {
+          "chunk_count": 1,
+          "chunk_id": 0,
+          "length": 931,
+          "page": 1,
+          "sha256": "7db72c2bd663d4107f65a894ad61d1498a2828343d0152af51cbf9d1173bb5b0",
+          "start": 0,
+          "total_pages": 3
+        },
+        {
+          "chunk_count": 1,
+          "chunk_id": 0,
+          "length": 655,
+          "page": 3,
+          "sha256": "5312fa85c07176562fa7c0c99f430f043b9d944ccb8810d645aca2169a058dd1",
+          "start": 0,
+          "total_pages": 3
+        }
+      ],
+      "fixture_sha256": "ff74301afbf51cb0c4d434e1352f2b5d568b97e9a6466a43a11d734becfa465b",
+      "page_count": 3,
+      "pages": [
+        {
+          "cleaned_length": 931,
+          "cleaned_sha256": "7db72c2bd663d4107f65a894ad61d1498a2828343d0152af51cbf9d1173bb5b0",
+          "page": 1,
+          "text_length": 932,
+          "text_sha256": "4bac55004a54bd6a907b15ce7eaf7f7e964572908531b586096180a3e00d314e"
+        },
+        {
+          "cleaned_length": 0,
+          "cleaned_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "page": 2,
+          "text_length": 0,
+          "text_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "cleaned_length": 655,
+          "cleaned_sha256": "5312fa85c07176562fa7c0c99f430f043b9d944ccb8810d645aca2169a058dd1",
+          "page": 3,
+          "text_length": 690,
+          "text_sha256": "6ab8aa3ea9ab15707f5db4a6cb4e13e513216df96fd4b04e50d12718c8f903c9"
+        }
+      ]
+    }
+  },
+  "generated_by": "python -m tests.pdf_golden --write",
+  "informational": {
+    "langchain-core": "1.7.3",
+    "mupdf": "1.28.5",
+    "python_full": "3.11.18"
+  }
+}

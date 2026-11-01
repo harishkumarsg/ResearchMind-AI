@@ -1,0 +1,43 @@
+{
+  "about": "Synthetic PDF fixtures; see README.md for licence and provenance.",
+  "fixtures": {
+    "single_column.pdf": {
+      "bytes": 6512,
+      "description": "Single-column paper: long pages that split into several chunks, 'Page N' footers, and a short final page that indexing skips.",
+      "page_markers": {
+        "1": "RMFX-SC-P1",
+        "2": "RMFX-SC-P2",
+        "3": "RMFX-SC-P3"
+      },
+      "pages": 3,
+      "sha256": "4dd713929918819594cb7258254f6851cc9ab429639ed9b8fe719362fd15ab9b"
+    },
+    "two_column.pdf": {
+      "bytes": 5343,
+      "description": "Two-column paper under a full-width title: reading order across columns.",
+      "page_markers": {
+        "1": "RMFX-TC-P1",
+        "2": "RMFX-TC-P2"
+      },
+      "pages": 2,
+      "sha256": "3d8ce1c055aabead93f3228c1475071f1a13df7c7e06b64b23643740661ba127"
+    },
+    "typography.pdf": {
+      "blank_pages": [
+        2
+      ],
+      "bytes": 4385,
+      "description": "Windows-1252 punctuation and symbols, a hyphenated line break, a small table, a blank page, and a monospaced block with runs of spaces.",
+      "page_markers": {
+        "1": "RMFX-TY-P1",
+        "3": "RMFX-TY-P3"
+      },
+      "pages": 3,
+      "sha256": "ff74301afbf51cb0c4d434e1352f2b5d568b97e9a6466a43a11d734becfa465b"
+    }
+  },
+  "generated_with": {
+    "reportlab": "4.5.1"
+  },
+  "generator": "tests/fixtures/pdf/generate_fixtures.py"
+}
