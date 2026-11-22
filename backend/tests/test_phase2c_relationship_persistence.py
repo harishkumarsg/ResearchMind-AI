@@ -43,6 +43,8 @@ if BACKEND_DIR not in sys.path:
 
 from sqlalchemy.exc import IntegrityError
 
+import tests  # noqa: E402,F401 — hermetic bootstrap; must precede every app import
+
 import app.db.session as session_module
 from app.db.models import Paper, PaperRelationshipRow
 from app.services.intelligence_schema import SECTION_NAMES

@@ -7,6 +7,7 @@ from app.core.usage_guard import charge_ai_unit, precheck_ai_generation
 from app.rag.embedder import encode_query
 from app.rag.vector_store import COLLECTION_NAME, client
 from app.rag.reranker import rerank_results
+from app.services.retrieval_guard import keep_live_hits
 
 from app.agents.qa_agent import generate_answer
 
@@ -109,6 +110,12 @@ def compare_papers(
                 query_filter=owner_filter,
                 limit=100
             ).points
+
+            # Only hits whose paper is one of this owner's indexed papers
+            # (app/services/retrieval_guard.py), checked before reranking
+            # and title matching: a title match on a deleted or unfinished
+            # paper's vectors must never reach the comparison.
+            results = keep_live_hits(owner_id, results)
 
             ranked = rerank_results(
                 paper_name,

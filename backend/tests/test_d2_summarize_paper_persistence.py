@@ -24,6 +24,8 @@ BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
+import tests  # noqa: E402,F401 — hermetic bootstrap; must precede every app import
+
 from dotenv import load_dotenv
 load_dotenv(os.path.join(BACKEND_DIR, ".env"))
 
@@ -226,7 +228,11 @@ class TestSummarizePersistenceIsGuarded(SummarizePersistenceTestCase):
             "BERT", hits=[_hit(paper=PAPER_B, paper_id=PAPER_B_ID)]
         )
 
-        self.assertEqual(resp.json()["status"], "success")
+        # Only this owner's indexed papers are summarised
+        # (app/services/retrieval_guard.py): another owner's paper is not
+        # summarised at all, let alone pointed at.
+        self.assertEqual(resp.json()["status"], "error")
+        self.assertIn("Paper not found", resp.json()["message"])
         self.assertEqual(
             self.sessions(), [],
             "a paper this owner does not have must not create or point a session",
@@ -239,7 +245,9 @@ class TestSummarizePersistenceIsGuarded(SummarizePersistenceTestCase):
             "Ghost", hits=[_hit(paper_id=UNKNOWN_PAPER_ID)]
         )
 
-        self.assertEqual(resp.json()["status"], "success")
+        # Vectors of a paper with no row are never summarised.
+        self.assertEqual(resp.json()["status"], "error")
+        self.assertIn("Paper not found", resp.json()["message"])
         self.assertEqual(self.sessions(), [])
 
     def test_malformed_paper_id_is_ignored(self):
@@ -247,7 +255,9 @@ class TestSummarizePersistenceIsGuarded(SummarizePersistenceTestCase):
 
         resp = self.summarize("Broken", hits=[_hit(paper_id="not-a-uuid")])
 
-        self.assertEqual(resp.json()["status"], "success")
+        # A hit that cannot be tied to a paper row is never summarised.
+        self.assertEqual(resp.json()["status"], "error")
+        self.assertIn("Paper not found", resp.json()["message"])
         self.assertEqual(self.sessions(), [])
 
     def test_missing_paper_id_is_ignored(self):
@@ -257,7 +267,9 @@ class TestSummarizePersistenceIsGuarded(SummarizePersistenceTestCase):
 
         resp = self.summarize("No id", hits=[hit])
 
-        self.assertEqual(resp.json()["status"], "success")
+        # A hit that cannot be tied to a paper row is never summarised.
+        self.assertEqual(resp.json()["status"], "error")
+        self.assertIn("Paper not found", resp.json()["message"])
         self.assertEqual(self.sessions(), [])
 
     def test_client_supplied_owner_id_is_not_authoritative(self):

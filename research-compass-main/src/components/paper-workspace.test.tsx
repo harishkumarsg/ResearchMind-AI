@@ -13,7 +13,7 @@
  *     page numbers drive the viewer. Nothing here invents a page.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 
 vi.mock("@/lib/api", async (importOriginal) => ({
@@ -145,6 +145,15 @@ function ask(question = "what is the method?") {
   fireEvent.click(screen.getByRole("button", { name: /^ask$/i }));
 }
 
+/** A promise the test settles by hand. */
+function deferred<T = void>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
 describe("PaperAskPanel", () => {
   it("scopes the question to this paper", async () => {
     (streamAskQuestion as any).mockImplementation(async (_q: string, onEvent: any) => {
@@ -215,15 +224,45 @@ describe("PaperAskPanel", () => {
   });
 
   it("surfaces a generating state while the answer streams", async () => {
+    // The stream is held open until the test releases it, so the pending
+    // state is checked while it is guaranteed to be on screen. A timer here
+    // races the assertion, and a busy machine loses that race.
+    const release = deferred();
+    let finished = false;
     (streamAskQuestion as any).mockImplementation(async (_q: string, onEvent: any) => {
       onEvent({ type: "status", text: "Searching this paper…" });
-      await new Promise((r) => setTimeout(r, 20));
+      await release.promise;
+      onEvent({ type: "token", text: "The method is described." });
+      onEvent({ type: "done", citations: CITATIONS });
+      finished = true;
     });
 
     renderPanel();
     ask();
 
-    expect(await screen.findByText("Searching this paper…")).toBeInTheDocument();
+    // Pending: the searching state and a busy button, and no answer yet.
+    expect(screen.getByRole("status")).toHaveTextContent("Searching this paper…");
+    expect(screen.getByRole("button", { name: /thinking/i })).toBeDisabled();
+    expect(screen.queryByText("The method is described.")).not.toBeInTheDocument();
+    // Nothing completes on its own: still pending once queued work has run.
+    await act(async () => {});
+    expect(finished).toBe(false);
+    expect(screen.getByRole("status")).toHaveTextContent("Searching this paper…");
+
+    // Release, and wait for this ask — the panel's own handling included —
+    // to finish.
+    const streamed = (streamAskQuestion as any).mock.results[0].value as Promise<void>;
+    await act(async () => {
+      release.resolve();
+      await streamed;
+    });
+
+    // Answered: the answer is shown and the in-progress state is gone.
+    expect(finished).toBe(true);
+    expect(screen.getByText("The method is described.")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByText("Searching this paper…")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^ask$/i })).toBeEnabled();
   });
 
   it("shows an empty state before anything is asked", () => {

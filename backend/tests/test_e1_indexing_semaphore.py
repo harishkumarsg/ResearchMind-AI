@@ -22,6 +22,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+import tests  # noqa: E402,F401 — hermetic bootstrap; must precede every app import
+
 from app.core import limits as limits_config
 from app.core.auth import get_current_owner_id
 from app.core.indexing_slot import get_slot
@@ -101,11 +103,14 @@ class IndexingTestCase(unittest.TestCase):
 
 def fake_index_one_paper(points=3):
     """Stand-in for index_one_paper that fires the metering hook exactly
-    as the real one does, immediately before its (mocked) provider work."""
+    as the real one does, immediately before its (mocked) provider work,
+    and then the claim check that precedes its (mocked) vector writes."""
 
-    def _run(paper, before_provider_work=None):
+    def _run(paper, before_provider_work=None, before_vector_writes=None):
         if before_provider_work is not None:
             before_provider_work()
+        if before_vector_writes is not None:
+            before_vector_writes([])
         return points
 
     return _run

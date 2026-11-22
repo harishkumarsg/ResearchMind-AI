@@ -9,6 +9,7 @@ from app.core.usage_guard import charge_ai_unit, precheck_ai_generation
 from app.rag.embedder import encode_query
 from app.rag.vector_store import COLLECTION_NAME, client
 from app.rag.reranker import rerank_results
+from app.services.retrieval_guard import keep_live_hits
 
 from app.agents.research_agent import research_agent
 
@@ -68,6 +69,12 @@ def research(query: str, owner_id: str = Depends(precheck_ai_generation)):
             query_filter=owner_filter,
             limit=MAX_RESULTS
         ).points
+
+        # Only hits whose paper is one of this owner's indexed papers
+        # become report context (app/services/retrieval_guard.py), checked
+        # before reranking so the order of those that remain is unchanged.
+        # A failed check raises into the handler below.
+        search_results = keep_live_hits(owner_id, search_results)
 
         print("\n========== RESEARCH DEBUG ==========")
         print(f"Query: {query}")

@@ -72,6 +72,7 @@ vi.mock("@/lib/api", async () => {
     getPaperDetails: vi.fn(),
     summarizePaper: vi.fn(),
     deletePaper: vi.fn(),
+    getPapersDetailed: vi.fn(),
     getPaperFileUrl: vi.fn(),
     getPaperIntelligence: vi.fn(),
     getPaperEvidence: vi.fn(),
@@ -88,6 +89,7 @@ import {
   getPaperEvidence,
   getPaperFileUrl,
   getPaperIntelligence,
+  getPapersDetailed,
   INTELLIGENCE_SECTION_ORDER,
   streamAskQuestion,
   summarizePaper,
@@ -122,6 +124,18 @@ function details(paper: Paper) {
     total_chunks: 10,
     preview: "",
   };
+}
+
+/** The paper as the library list (/papers, i.e. the database) has it. */
+function libraryRow(paper: Paper) {
+  return { paper_id: paper.id, title: paper.name, status: "indexed" as const, status_detail: null };
+}
+
+/** Delete is offered once the library list has named this paper's id. */
+async function enabledDeleteButton() {
+  const button = screen.getByRole("button", { name: /^delete$/i });
+  await waitFor(() => expect(button).toBeEnabled());
+  return button;
 }
 
 /** A stored analysis whose Key Results section cites page 4, and only it. */
@@ -240,6 +254,9 @@ beforeEach(() => {
   } as any);
   vi.mocked(summarizePaper).mockReset();
   vi.mocked(deletePaper).mockReset();
+  // The library list (database rows) the page takes a paper's id from.
+  vi.mocked(getPapersDetailed).mockReset();
+  vi.mocked(getPapersDetailed).mockResolvedValue([libraryRow(A), libraryRow(B)]);
   vi.mocked(generatePaperIntelligence).mockReset();
   vi.mocked(streamAskQuestion).mockReset();
 });
@@ -287,7 +304,7 @@ describe("moving to another paper", () => {
 
     const { goTo } = renderWorkspace(A);
     await showing(A);
-    fireEvent.click(screen.getByRole("button", { name: /delete/i }));
+    fireEvent.click(await enabledDeleteButton());
     await screen.findByText("DELETE-FAILED-FOR-PAPER-A");
 
     goTo(B);
@@ -296,7 +313,7 @@ describe("moving to another paper", () => {
     // Nothing failed for B, and nothing was attempted on it.
     expect(screen.queryByText("DELETE-FAILED-FOR-PAPER-A")).not.toBeInTheDocument();
     expect(deletePaper).toHaveBeenCalledTimes(1);
-    expect(deletePaper).toHaveBeenCalledWith(A.name);
+    expect(deletePaper).toHaveBeenCalledWith(A.id);
   });
 
   it("opens the next paper at page 1, not at the previous paper's page", async () => {
@@ -608,5 +625,67 @@ describe("staying on the same paper", () => {
     expect(screen.getByText("SUMMARY-OF-PAPER-A")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: /evidence on page 4/i })).toBeInTheDocument();
     expect(summarizePaper).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ----------------------------------------------------------------------
+// Delete names one paper, by the id the library list gives it
+// ----------------------------------------------------------------------
+describe("deleting from the paper page", () => {
+  it("deletes by the library's id even when the details report another paper's id", async () => {
+    // Details are found by searching for the title, and with two
+    // same-named papers they can come back carrying the other one's id.
+    vi.mocked(getPaperDetails).mockResolvedValue({
+      ...details(A),
+      paper_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    } as any);
+
+    renderWorkspace(A);
+    await showing(A);
+    fireEvent.click(await enabledDeleteButton());
+
+    await waitFor(() => expect(deletePaper).toHaveBeenCalledTimes(1));
+    expect(deletePaper).toHaveBeenCalledWith(A.id);
+  });
+
+  it("refuses to delete when more than one paper has this name", async () => {
+    const otherCopy = { ...libraryRow(A), paper_id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd" };
+    vi.mocked(getPapersDetailed).mockResolvedValue([libraryRow(A), otherCopy, libraryRow(B)]);
+
+    renderWorkspace(A);
+    await showing(A);
+
+    expect(
+      await screen.findByText(/more than one paper in your library is named/i),
+    ).toBeInTheDocument();
+    const button = screen.getByRole("button", { name: /^delete$/i });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    await settle();
+    expect(deletePaper).not.toHaveBeenCalled();
+  });
+
+  it("does not offer delete before the library list has named the paper", async () => {
+    vi.mocked(getPapersDetailed).mockReturnValue(new Promise(() => {}));
+
+    renderWorkspace(A);
+    await showing(A);
+
+    const button = screen.getByRole("button", { name: /^delete$/i });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    await settle();
+    expect(deletePaper).not.toHaveBeenCalled();
+  });
+
+  it("does not offer delete when the library list could not be loaded", async () => {
+    vi.mocked(getPapersDetailed).mockRejectedValue(new Error("library unavailable"));
+
+    renderWorkspace(A);
+    await showing(A);
+    await settle();
+
+    expect(screen.getByRole("button", { name: /^delete$/i })).toBeDisabled();
+    expect(deletePaper).not.toHaveBeenCalled();
   });
 });

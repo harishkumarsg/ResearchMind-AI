@@ -12,7 +12,8 @@ import {
   Upload,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { getDashboardStats } from "@/lib/api";
+import { getDashboardStats, getPapersDetailed } from "@/lib/api";
+import type { PaperDetail } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { queryKeys } from "@/lib/query-keys";
 import { useRequireAuth } from "@/lib/require-auth";
@@ -35,6 +36,17 @@ function Dashboard() {
     refetchInterval: 30_000,
     enabled: !!userId,
   });
+
+  // /stats names recent papers by title only, and two papers can share a
+  // title. Their ids — the cards' keys — come from the library list: the
+  // same query as the sidebar's, so normally a cache hit.
+  const { data: library = [] } = useQuery({
+    queryKey: queryKeys.papersDetailed(userId),
+    queryFn: getPapersDetailed,
+    staleTime: 30_000,
+    enabled: !!userId,
+  });
+  const recentPapers = withPaperIds(stats?.recent_papers ?? [], library);
 
   return (
     <AppShell
@@ -98,9 +110,9 @@ function Dashboard() {
 
         {!isLoading && stats && stats.recent_papers.length > 0 && (
           <div className="mt-5 grid gap-4 md:grid-cols-3">
-            {stats.recent_papers.map((name) => (
+            {recentPapers.map(({ key, name }) => (
               <div
-                key={name}
+                key={key}
                 className="rounded-xl border border-border bg-surface p-5"
               >
                 <FileText className="h-4 w-4 text-muted-foreground" />
@@ -159,6 +171,28 @@ function Dashboard() {
       </section>
     </AppShell>
   );
+}
+
+/**
+ * Each recent title, with a paper id to key its card by. /stats lists
+ * titles only, so a title takes its indexed papers' ids, in id order, one
+ * per occurrence. A title the library list does not account for yet keeps
+ * a positional key, which is still unique.
+ */
+function withPaperIds(titles: string[], library: PaperDetail[]) {
+  const idsByTitle = new Map<string, string[]>();
+  for (const paper of library) {
+    if (paper.status !== "indexed") continue;
+    idsByTitle.set(paper.title, [...(idsByTitle.get(paper.title) ?? []), paper.paper_id]);
+  }
+  idsByTitle.forEach((ids) => ids.sort());
+
+  const seen = new Map<string, number>();
+  return titles.map((name) => {
+    const nth = seen.get(name) ?? 0;
+    seen.set(name, nth + 1);
+    return { name, key: idsByTitle.get(name)?.[nth] ?? `${name}#${nth}` };
+  });
 }
 
 function StatCard({

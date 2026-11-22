@@ -17,6 +17,7 @@ from app.core.providers import (
     classify_provider_error,
     groq_client_options,
     groq_stream_deadline_seconds,
+    internal_error_payload,
 )
 from app.core.quota import charge as charge_quota
 from app.core.usage_guard import precheck_ai_generation
@@ -25,6 +26,7 @@ from app.db.session import session_scope
 from app.rag.embedder import encode_query
 from app.rag.vector_store import COLLECTION_NAME, client
 from app.rag.reranker import rerank_results
+from app.services.retrieval_guard import keep_live_hits
 from app.services.chat_store import (
     coerce_paper_id,
     load_chat_state,
@@ -375,6 +377,23 @@ def ask_stream(
                 query_filter=owner_filter,
                 limit=SEARCH_LIMIT,
             ).points
+
+            # Only hits whose paper is one of this owner's indexed papers
+            # become evidence (app/services/retrieval_guard.py). If that
+            # cannot be checked, the answer stops here with the standard
+            # internal-error message: unchecked vectors are never used, and
+            # the lookup's own error text never reaches the client.
+            try:
+                results = keep_live_hits(owner_id, results)
+            except Exception as lookup_error:
+                print(f"Ask stream paper check failed: {type(lookup_error).__name__}")
+                failure = internal_error_payload()
+                yield generate_sse_event({
+                    "type": "error",
+                    "code": failure["code"],
+                    "text": failure["message"],
+                })
+                return
 
             if not results:
                 yield generate_sse_event({

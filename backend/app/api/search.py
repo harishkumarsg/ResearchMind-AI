@@ -7,6 +7,7 @@ from app.core.providers import classify_provider_error, internal_error_payload
 from app.rag.embedder import encode_query
 from app.rag.vector_store import COLLECTION_NAME, client
 from app.rag.reranker import rerank_results
+from app.services.retrieval_guard import keep_live_hits
 
 router = APIRouter()
 
@@ -43,6 +44,13 @@ def search(
             query_filter=owner_filter,
             limit=50
         ).points
+
+        # Only hits whose paper is one of this owner's indexed papers are
+        # used (app/services/retrieval_guard.py), checked before reranking
+        # so the order of the hits that remain is unchanged. A failed check
+        # raises into the handler below: it is never reported as "no
+        # results".
+        results = keep_live_hits(owner_id, results)
 
         if not results:
 

@@ -11,8 +11,8 @@
  * backend writes only application-authored text into status_detail, and
  * these tests pin that the UI shows that field and nothing else.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
@@ -43,7 +43,7 @@ vi.mock("@/lib/api", () => ({
 }));
 
 import { AppShell } from "@/components/app-shell";
-import { getPapersDetailed } from "@/lib/api";
+import { deletePaper, getPapersDetailed } from "@/lib/api";
 
 const READY = {
   paper_id: "11111111-1111-4111-8111-111111111111",
@@ -156,5 +156,115 @@ describe("sidebar paper states", () => {
     for (const leak of ["Traceback", "psycopg", "sqlalchemy", "Bearer ", "http://", "https://"]) {
       expect(body).not.toContain(leak);
     }
+  });
+});
+
+// ----------------------------------------------------------------------
+// Deleting from the sidebar names exactly one paper, by its id
+// ----------------------------------------------------------------------
+describe("deleting from the sidebar", () => {
+  // Two DIFFERENT papers that happen to share a filename.
+  const COPY_ONE = {
+    paper_id: "aaaaaaaa-1111-4111-8111-111111111111",
+    title: "paper.pdf",
+    status: "indexed" as const,
+    status_detail: null,
+  };
+  const COPY_TWO = {
+    paper_id: "bbbbbbbb-2222-4222-8222-222222222222",
+    title: "paper.pdf",
+    status: "indexed" as const,
+    status_detail: null,
+  };
+
+  let confirmSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    (deletePaper as any).mockResolvedValue(undefined);
+  });
+  afterEach(() => {
+    confirmSpy.mockRestore();
+  });
+
+  /** The sidebar entry that shows this short id, and its delete button. */
+  async function deleteButtonFor(shortId: string) {
+    const entry = (await screen.findByText(shortId)).closest("div");
+    return within(entry as HTMLElement).getByTitle("Delete paper");
+  }
+
+  it("deletes the paper whose button was pressed, by its id", async () => {
+    (getPapersDetailed as any).mockResolvedValue([COPY_ONE, COPY_TWO]);
+    renderShell();
+
+    fireEvent.click(await deleteButtonFor("bbbbbbbb"));
+
+    await waitFor(() => expect(deletePaper).toHaveBeenCalledTimes(1));
+    expect(deletePaper).toHaveBeenCalledWith(COPY_TWO.paper_id);
+  });
+
+  it("tells same-named papers apart by a short id, and says only one will go", async () => {
+    (getPapersDetailed as any).mockResolvedValue([READY, COPY_ONE, COPY_TWO]);
+    renderShell();
+
+    expect(await screen.findByText("aaaaaaaa")).toBeInTheDocument();
+    expect(screen.getByText("bbbbbbbb")).toBeInTheDocument();
+    // A paper whose name is unique gets no marker.
+    expect(screen.queryByText(READY.paper_id.slice(0, 8))).not.toBeInTheDocument();
+
+    fireEvent.click(await deleteButtonFor("aaaaaaaa"));
+
+    const prompt = String(confirmSpy.mock.calls[0][0]);
+    expect(prompt).toContain("aaaaaaaa");
+    expect(prompt).toContain("Only this one will be deleted");
+    await waitFor(() => expect(deletePaper).toHaveBeenCalledWith(COPY_ONE.paper_id));
+  });
+
+  it("deletes a uniquely named paper by its id, never by its title", async () => {
+    (getPapersDetailed as any).mockResolvedValue([READY]);
+    renderShell();
+
+    fireEvent.click(await screen.findByTitle("Delete paper"));
+
+    await waitFor(() => expect(deletePaper).toHaveBeenCalledTimes(1));
+    expect(deletePaper).toHaveBeenCalledWith(READY.paper_id);
+    expect(deletePaper).not.toHaveBeenCalledWith(READY.title);
+  });
+
+  it("deletes nothing when the confirmation is declined", async () => {
+    confirmSpy.mockReturnValue(false);
+    (getPapersDetailed as any).mockResolvedValue([COPY_ONE, COPY_TWO]);
+    renderShell();
+
+    fireEvent.click(await deleteButtonFor("aaaaaaaa"));
+
+    expect(deletePaper).not.toHaveBeenCalled();
+  });
+
+  // A removal that failed partway leaves the paper "deleting"; repeating
+  // the same delete-by-id request finishes it.
+  const STUCK = {
+    paper_id: "44444444-4444-4444-8444-444444444444",
+    title: "stuck_paper.pdf",
+    status: "deleting" as const,
+    status_detail: null,
+  };
+
+  it("offers Retry removal for a paper left deleting, and retries it by id", async () => {
+    (getPapersDetailed as any).mockResolvedValue([STUCK]);
+    renderShell();
+
+    expect(await screen.findByText("Removing…")).toBeInTheDocument();
+    fireEvent.click(screen.getByTitle("Retry removal"));
+
+    await waitFor(() => expect(deletePaper).toHaveBeenCalledTimes(1));
+    expect(deletePaper).toHaveBeenCalledWith(STUCK.paper_id);
+  });
+
+  it("offers Retry removal only for a paper left deleting", async () => {
+    (getPapersDetailed as any).mockResolvedValue([PROCESSING, FAILED]);
+    renderShell();
+
+    await screen.findByText("working paper.pdf");
+    expect(screen.queryByTitle("Retry removal")).not.toBeInTheDocument();
   });
 });

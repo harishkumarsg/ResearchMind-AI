@@ -36,6 +36,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+import tests  # noqa: E402,F401 — hermetic bootstrap; must precede every app import
+
 from app.agents import qa_agent
 from app.core.auth import get_current_owner_id
 from app.db.models import Base, Report
