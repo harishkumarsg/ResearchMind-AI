@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -235,10 +237,15 @@ app.include_router(
 @app.get("/health")
 def health_check():
 
+    # Railway sets RAILWAY_GIT_COMMIT_SHA on deploys built from a Git
+    # commit, so this reports exactly which commit is running. Anywhere
+    # else (local runs, tests, a manual deploy) it reports "unknown".
+    commit = os.environ.get("RAILWAY_GIT_COMMIT_SHA", "").strip() or "unknown"
+
     return {
         "status": "healthy",
         "service": "ResearchMind AI",
-        "version": "3.1.0"
+        "commit": commit,
     }
 
 # ====================================
