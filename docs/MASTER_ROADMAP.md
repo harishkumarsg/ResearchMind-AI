@@ -1,7 +1,18 @@
 # ResearchMind AI — Master Project Roadmap
 
-**Last updated:** 2026-09-27
+**Last updated:** 2026-11-22
 **Status of this document:** current and authoritative.
+
+> **Updated 2026-11-22.** `origin/master` moved from `ddd6818` to `e1c766e`
+> (17 commits: explicit paper-intelligence generation, evidence-inspector and
+> workspace fixes, a TanStack Start security patch, an audit-fix pass that added
+> migration `0007`, hashed CI dependencies, README and licence changes, and the
+> deletion of `render.yaml`).
+> This update corrects §3, §7, §8, §10 and the Summary to match, and records
+> what the `chore/maintenance` branch changes (the keep-alive workflow, a commit
+> identifier on `/health`, removal of the query-logging `print()` calls,
+> `.gitattributes`). Items fixed only in code are marked **fixed in code, not yet
+> checked live**; nothing below claims a production check that was not made.
 
 > **Reconciled 2026-09-27.** This document was finalized at `25064eb` (2026-09-14)
 > and then went stale: **44 commits** landed after it, including three migrations
@@ -77,10 +88,11 @@ This describes the validated product. **Corrected 2026-09-27:** this section
 previously said "the deployed code differs substantially", which was true when
 `origin/master` was `d83a16f` and is no longer — `origin/master` now equals `HEAD`
 (`ddd6818`). See §3 for the deployment state and its SHA-verification limitation.
+*(2026-11-22: `origin/master` is now `e1c766e`; see §3.)*
 
 | Layer | Choice | Notes |
 |---|---|---|
-| Backend | FastAPI 0.136.3 / Starlette 1.2.1, Python 3.11 | live config is `backend/railway.toml` → `uvicorn app.main:app`; the root `render.yaml` is stale (§7 item 13) |
+| Backend | FastAPI 0.136.3 / Starlette 1.2.1, Python 3.11 | live config is `backend/railway.toml` → `uvicorn app.main:app`; the stale root `render.yaml` was deleted on 2026-11-22 in `e1c766e` (§7 item 13) |
 | ORM / driver | SQLAlchemy 2.0.50, psycopg 3.3.5 | `DATABASE_URL` uses `postgresql+psycopg://` |
 | Database | Supabase Postgres **17.6** | session-mode pooler, port 5432 |
 | Database role | `researchmind_app` | NOBYPASSRLS, owns no tables; username `researchmind_app.<project_ref>` |
@@ -459,15 +471,23 @@ substring, and that is covered by tests and mutation runs.
 - **No defined major roadmap phase remains.** C1 was the last item defined as a
   major phase; the work in §2b landed afterwards in smaller approved steps, and
   Phase 3.5 is CLOSED.
-- **Git:** `HEAD` = `ddd6818` (`fix: raise paper intelligence completion budget`),
-  parent `f8804b9`. `origin/master` = `ddd6818`; local, tracking and server refs
-  agree. The working tree was clean before this documentation update; while it is
-  uncommitted, this roadmap file is the only working-tree modification. `e144ab0`,
-  `cebd105` and `25064eb` are all ancestors of `HEAD` and pushed.
-- **Migrations at `HEAD`:** six, all applied —
+- **Git (updated 2026-11-22):** `origin/master` = `e1c766e` (`Delete render.yaml`,
+  2026-11-22), 17 commits after `ddd6818`, which is its ancestor. Open branches:
+  `wip/lifecycle-and-deletion` (paper lifecycle claims, retrieval guard,
+  delete-by-id; not merged) and `chore/maintenance` (the change that carries this
+  update; not merged). *Superseded record, 2026-09-27: `HEAD` = `origin/master` =
+  `ddd6818`, parent `f8804b9`; `e144ab0`, `cebd105` and `25064eb` are ancestors.*
+- **Migrations at `origin/master` (updated 2026-11-22):** seven —
   `0001_core_schema.sql`, `0002_storage_policies.sql`, `0003_chat_messages.sql`,
   `0004_usage_counters.sql`, `0005_paper_intelligence.sql`,
-  `0006_paper_relationship.sql`. There is no `0007`.
+  `0006_paper_relationship.sql`, and `0007_core_tables_force_rls.sql` (added in
+  `b8cd239`, 2026-10-24: grants for `researchmind_app` and forced RLS on
+  `papers`, `reports`, `chat_sessions`, `chat_messages`). `0001`–`0006` were
+  recorded as applied on 2026-09-27. **Whether `0007` has been applied in
+  production was not verified** in this update. Outside the numbered sequence,
+  `bootstrap/app_role.sql` creates the app role on a fresh project, and
+  `bootstrap/keepalive_role.sql` (on `chore/maintenance`) creates the read-only
+  role the keep-alive workflow uses; both are applied by hand.
 - **Application role:** `researchmind_app`, `rolbypassrls = false`.
 - **RLS:** enabled and forced on the core tables; owner-only policies, unchanged,
   no explicit `WITH CHECK`.
@@ -517,15 +537,17 @@ recorded precisely rather than glossed:
   four separate gates. Adding one would make future verification a single
   unauthenticated request. It is **not** a defined phase and is listed only as
   technical debt (§7 item 12).
+- **Update 2026-11-22:** `chore/maintenance` makes `/health` return
+  `"commit"` from Railway's `RAILWAY_GIT_COMMIT_SHA` (or `"unknown"`). Once that
+  is merged and deployed, the running SHA can be read with one unauthenticated
+  request. Until then, everything above still applies, and which commit is
+  deployed today was **not** checked in this update.
 
-**Stale `render.yaml` — documented, not modified.** The repository still contains a
-root `render.yaml` naming a Render service `researchmind-api` with
-**`autoDeploy: true`**, declaring only `GROQ_API_KEY`, `QDRANT_URL` and
-`QDRANT_API_KEY`. It does not describe the live deployment, which is Railway. A
-second auto-deploy configuration pointing at a different platform is an
-operational hazard as well as a documentation one, and it requires **separate
-review**; it was deliberately left untouched by this reconciliation. See §7
-item 13.
+**`render.yaml` — removed 2026-11-22.** The stale root `render.yaml` (a Render
+service `researchmind-api` with `autoDeploy: true` and only three environment
+variables) was deleted from master in `e1c766e`. Railway, configured by
+`backend/railway.toml`, is the only deployment configuration in the repository,
+and Render is no longer used. See §7 item 13.
 
 ---
 
@@ -627,7 +649,11 @@ denominator, and inventing one would be fabrication.
 
 ---
 
-## 7. Optional technical debt (13 items, 2 resolved)
+## 7. Optional technical debt (13 items, 5 resolved)
+
+Updated 2026-11-22: item 13 is resolved on master; items 4 and 12 are resolved
+by `chore/maintenance`, the change that carries this update, and are
+**fixed in code, not yet checked live** until it is merged and deployed.
 
 Re-checked on 2026-09-27. Items 4 and 5 were confirmed still open by direct
 inspection; item 5's line number had drifted. Items 12 and 13 are new and are
@@ -638,7 +664,7 @@ referenced from §3.
 | 1 | `UserMemoryStore` has **no eviction** — `get`/`clear`/`owner_count` only; the dict grows unbounded per owner | `app/memory.py` |
 | 2 | `last_research_query/report/context/sources` and `last_citations` are now **write-only** — D2 step 3 removed export's reads while `research.py` still writes them | `app/memory.py`, `app/api/research.py` |
 | 3 | Dead SSE `"sources"` field duplicating `"citations"` in the `done` event | `app/api/ask_stream.py:325` |
-| 4 | 8 debug `print()` calls, including the user's query, written to stdout. **Confirmed still open 2026-09-27** — exactly 8 `print(` remain, and line 73 is `print(f"Query: {query}")` | `app/api/research.py` |
+| 4 | ~~8 debug `print()` calls, including the user's query, written to stdout~~ **Fixed in code, not yet checked live (2026-11-22, `chore/maintenance`)** — replaced by a module logger that records counts at DEBUG and only the exception type at WARNING, never the query; `tests/test_research_logging.py`. Note: `/research` takes the query as a URL parameter, so the server's access log can still record it (not addressed here) | `app/api/research.py` |
 | 5 | Hardcoded `"researchmind"` collection label (actual collection is `researchmind_v2`). **Confirmed still open 2026-09-27**; the line has drifted from 79 to **83** | `src/routes/dashboard.tsx:83` |
 | 6 | ~~Two stale PDFs from June left in the working directory~~ **Resolved 2026-09-14** — deleted in the local generated-artifact cleanup (ignored files, never committed) | `backend/` |
 | 7 | ~~Older `docs/` files stale, empty, or contradictory~~ **Resolved 2026-09-14** — `ROADMAP.md`, `ARCHITECTURE.md`, `API_REFERENCE.md` and `PROJECT_CONTEXT.md` deleted (see the header note) | `docs/` |
@@ -646,12 +672,18 @@ referenced from §3.
 | 9 | `GRANT USAGE ON SCHEMA auth TO researchmind_app` **granted nothing** — `postgres` does not own schema `auth`. Policies still evaluate `auth.uid()` correctly; only a *direct* `SELECT auth.uid()` by the app role is denied | Supabase `auth` schema |
 | 10 | Policies rely on the **implicit** `WITH CHECK` (Postgres reuses `USING` for writes). Correct today, but an edit to `USING` alone would silently change write rules. Explicit `WITH CHECK` (5b) was deferred | migrations 0001, 0003 |
 | 11 | **Secret hygiene — PARTLY ADDRESSED.** Originally: the `researchmind_app` password and two copies of the `postgres` password existed in a session scratchpad (outside the repository, never committed, absent from git history and transcripts), and the repository sits under the OneDrive root so `backend/.env` may be cloud-synced. A credential rotation **was** carried out in a later security-incident response, after this item was written. Marked partly addressed rather than resolved: the rotation is not verifiable from the repository, and the OneDrive-sync exposure of `backend/.env` is unchanged | local only |
-| 12 | **The backend exposes no build or commit identifier.** `GET /health` returns a hard-coded `"version": "3.1.0"`, unchanged since the initial commit, and no response header carries a revision. The deployed SHA therefore cannot be verified by request — this blocked deployment verification across four gates (§3). Not a defined phase | `app/main.py` health endpoint |
-| 13 | **Stale `render.yaml` with `autoDeploy: true`.** Names a Render service while the live deployment is Railway (`backend/railway.toml`), and declares only 3 of the environment variables the product needs. A second auto-deploy configuration for a different platform is an operational hazard; **requires separate review** and was deliberately not modified during the 2026-09-27 documentation reconciliation | `render.yaml` |
+| 12 | ~~**The backend exposes no build or commit identifier.**~~ **Fixed in code, not yet checked live (2026-11-22, `chore/maintenance`)** — `GET /health` now returns `"commit"` from `RAILWAY_GIT_COMMIT_SHA`, or `"unknown"`; `tests/test_health_commit.py`. Previously it returned a hard-coded `"version": "3.1.0"`, so the deployed SHA could not be verified by request, which blocked deployment verification across four gates (§3) | `app/main.py` health endpoint |
+| 13 | ~~**Stale `render.yaml` with `autoDeploy: true`.**~~ **Resolved 2026-11-22** — deleted from master in `e1c766e`; Render is no longer used, and Railway (`backend/railway.toml`) is the only deployment configuration in the repository | `render.yaml` (deleted) |
 
 ---
 
-## 8. Known pre-existing bugs (9 items — 2 resolved, 1 with resolution evidence, 1 unverified)
+## 8. Known pre-existing bugs (9 items — 2 resolved, 3 fixed in code but not yet checked live, 1 with resolution evidence)
+
+Updated 2026-11-22: items 2, 3 and 4 are **fixed in code, not yet checked
+live**. Each fix was confirmed by reading the code on `origin/master`
+(`e1c766e`) and has tests, but none was exercised against the deployed site.
+For item 6, `.gitattributes` (on `chore/maintenance`) removes the CRLF cause;
+`eslint` was not re-run.
 
 Reconciled 2026-09-27. Items 1 and 5 were fixed by later work; item 8 has
 resolution evidence but was not exhaustively re-verified; item 2 was **not**
@@ -661,10 +693,10 @@ The remaining items were not re-tested and are carried forward unchanged.
 | # | Bug | Impact |
 |---|---|---|
 | 1 | ~~CORS entry `"https://*.vercel.app"` **never matches**~~ **RESOLVED** — `main.py` now uses `allow_origins=get_allowed_origins()` from `app/core/cors.py`, with optional `CORS_EXTRA_ORIGINS`. Commit `7dd86f0`, `tests/test_cors_config.py` | Was a blocker for preview-URL deployments; no longer applies |
-| 2 | `/export-report` returns **HTTP 200 with a JSON error body** when no report exists — **UNVERIFIED as of 2026-09-27.** `app/api/export_report.py` exists and a `/latest-report` endpoint was added later (`f04f672`, `tests/test_latest_report.py`), but the no-report status code was **not** re-checked during reconciliation. Neither resolved nor unresolved is claimed | If still present: `response.ok` is true, so the browser saves a JSON file named `research-report.pdf`. A `404` would fix it |
-| 3 | Papers with `status='failed'` are **invisible in the UI** — 2 of 3 current rows | Users cannot see or retry failed uploads |
-| 4 | `FOLLOW_UP_WORDS` matching is **substring-based** — "net**work**s" contains "work" | Ordinary questions misread as follow-ups, silently prepending a stale topic |
-| 5 | ~~`research.py` returns **raw exception strings** to the client~~ **RESOLVED** — the client-facing path now goes through `classify_provider_error()` and `internal_error_payload()`. A `print(f"Research Error: {str(e)}")` remains at `research.py:344`, which is a **server-side log**, not client exposure (and overlaps §7 item 4). Commit `8a49ea9`, `tests/test_internal_error_sanitization.py` | Client-facing internal-detail disclosure closed |
+| 2 | ~~`/export-report` returns **HTTP 200 with a JSON error body** when no report exists~~ **Fixed in code, not yet checked live (2026-11-22)** — `app/api/export_report.py:115` sets `404` when no report exists; covered in `tests/test_d2_export_report.py`. (Was UNVERIFIED as of 2026-09-27.) | If still present: `response.ok` is true, so the browser saves a JSON file named `research-report.pdf`. A `404` would fix it |
+| 3 | ~~Papers with `status='failed'` are **invisible in the UI**~~ **Fixed in code, not yet checked live (2026-11-22)** — `src/components/app-shell.tsx:56` renders failed papers with their `status_detail`; `src/components/paper-status.test.tsx`. Not checked in a browser | Users cannot see or retry failed uploads |
+| 4 | ~~`FOLLOW_UP_WORDS` matching is **substring-based** — "net**work**s" contains "work"~~ **Fixed in code, not yet checked live (2026-11-22)** — `app/api/ask_stream.py:101` now matches whole tokens (`FOLLOW_UP_WORDS.intersection(tokens)`) plus explicit phrases; `tests/test_phase1a_hardening.py` | Ordinary questions misread as follow-ups, silently prepending a stale topic |
+| 5 | ~~`research.py` returns **raw exception strings** to the client~~ **RESOLVED** — the client-facing path now goes through `classify_provider_error()` and `internal_error_payload()`. A `print(f"Research Error: {str(e)}")` remained at `research.py:344` as a **server-side log**, not client exposure; `chore/maintenance` replaces it with a log of the exception type only (§7 item 4). Commit `8a49ea9`, `tests/test_internal_error_sanitization.py` | Client-facing internal-detail disclosure closed |
 | 6 | `eslint .` fails with **917 errors** (843 are CRLF/prettier line-ending issues) | Pre-existing repo-wide; files untouched by recent work also fail |
 | 7 | **No token revocation** | A signed-out user's JWT remains valid until expiry |
 | 8 | Single-paper answer lock — **RESOLUTION EVIDENCE.** Commit `9d63bb1` ("allow new Ask questions to span multiple papers") with `tests/test_e2_multi_paper_retrieval.py`, and `3efbda1` with `tests/test_e2b_evidence_diversity.py`, address exactly this. Recorded as resolution evidence rather than confirmed-resolved: the behaviour was **not** exhaustively re-verified during reconciliation | Questions spanning two papers were previously unanswerable |
@@ -779,16 +811,17 @@ These rules were established over the course of the project and remain in force.
 
 15. **Never push to `master` without an approved deployment plan. A push is a
     deployment.** The live backend is on **Railway**, configured by
-    `backend/railway.toml`, and it builds from this repository. The stale root
-    `render.yaml` **also** still sets `autoDeploy: true` for a Render service
-    (§7 item 13), so two platforms are nominally armed against `master`; that
-    needs separate review. Corrected 2026-09-27 — this rule previously named only
-    Render.
-16. **The deployed revision cannot be confirmed by request.** The backend exposes
-    no build identifier (§7 item 12), so a deployment claim must either cite the
-    Railway dashboard or say plainly that the SHA was not directly verified. Do
-    not infer a deployed commit from a clean tree, matching git refs, a healthy
-    `/health`, or the fact that auto-deploy usually works.
+    `backend/railway.toml`, and it builds from this repository; the frontend is
+    on Vercel. `render.yaml` was deleted on 2026-11-22 (`e1c766e`), so Render is
+    no longer armed against `master` (§7 item 13). Corrected 2026-09-27 — this
+    rule previously named only Render; updated 2026-11-22.
+16. **Confirm the deployed revision by request, not by inference.** Until the
+    `/health` `"commit"` field (§7 item 12) is deployed, a deployment claim must
+    either cite the Railway dashboard or say plainly that the SHA was not
+    directly verified. After it is deployed, read the SHA from `/health`; a value
+    of `"unknown"` means it was not verified. Never infer a deployed commit from
+    a clean tree, matching git refs, a healthy `/health` status alone, or the
+    fact that auto-deploy usually works.
 
 ---
 
@@ -800,11 +833,11 @@ These rules were established over the course of the project and remain in force.
 | **Last defined major phase** | C1 — RLS Hardening: **COMPLETE / PASS** |
 | **Next phase** | **None defined** |
 | **Major phases remaining** | **0** |
-| **Git `HEAD`** | `ddd6818` — `origin/master` matches; tree was clean before this documentation update, which is the only working-tree modification until committed |
-| **Migrations** | 6 applied (`0001`–`0006`); no `0007` |
-| **Deployment** | **DEPLOYED** — Railway, `backend/railway.toml`, `/health` returns 200. Deployed SHA **not directly verified**: no build identifier exists, so `ddd6818` was identified only indirectly, via the deployment's commit message |
+| **Git** | `origin/master` = `e1c766e` (2026-11-22). Unmerged: `wip/lifecycle-and-deletion`, `chore/maintenance` |
+| **Migrations** | 7 in the repository (`0001`–`0007`). `0001`–`0006` recorded as applied (2026-09-27); `0007` applied state **not verified** |
+| **Deployment** | **DEPLOYED** — Railway (backend, `backend/railway.toml`) and Vercel (frontend). Deployed SHA **not directly verified**; `/health` reports it once `chore/maintenance` is deployed. As of 2026-09-27, `ddd6818` was identified only indirectly, via the deployment's commit message |
 | **Validation baseline** | **HISTORICAL (2026-09-14)** — papers 3 · reports 0 · chat_sessions 1 · chat_messages 6 · Qdrant 220. **Current values unverified**; refreshing them needs a separate approved read-only database check |
-| **Test suite** | 1292 tests, 0 failed, 7 skipped |
-| **Optional cleanup items** | 11 open of 13 (2 resolved, 1 partly addressed) |
-| **Known pre-existing bugs** | 9 listed — 2 resolved, 1 with resolution evidence, 1 unverified |
-| **Blockers** | None identified for the current product. Outstanding operational concerns: the stale `render.yaml` with `autoDeploy: true` on a second platform, and the absent build identifier that prevents deployed-SHA verification. |
+| **Test suite** | Run 2026-11-22 on `chore/maintenance` (Windows, Python 3.11, Node 22): backend 1411 tests, 0 failed, 10 skipped; frontend 21 files, 499 passed. CI on Linux is the reference. *(2026-09-27: 1292 tests, 0 failed, 7 skipped.)* |
+| **Optional cleanup items** | 8 open of 13 (5 resolved, 2 of them fixed in code but not yet checked live; 1 partly addressed) |
+| **Known pre-existing bugs** | 9 listed — 2 resolved, 3 fixed in code but not yet checked live, 1 with resolution evidence |
+| **Blockers** | None identified for the current product. Outstanding operational concerns: free-tier Supabase and Qdrant pause after a week without activity (the keep-alive workflow on `chore/maintenance` needs its role and secrets set up before it can run), and the deployed SHA stays unverifiable until the `/health` commit field is deployed. |
