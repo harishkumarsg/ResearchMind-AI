@@ -1,5 +1,9 @@
 [build]
 builder = "NIXPACKS"
+# Rebuild and redeploy only when something under backend/ changes, so
+# README, frontend and workflow commits don't redeploy the API. Railway
+# matches these from the repository root, even with a root directory set.
+watchPatterns = ["backend/**"]
 
 [deploy]
 startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
