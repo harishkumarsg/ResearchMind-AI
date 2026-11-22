@@ -1,3 +1,4 @@
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends
@@ -18,6 +19,11 @@ from app.db.session import session_scope
 from app.memory import get_user_memory
 
 router = APIRouter()
+
+#: Never pass the user's query, the report, or an exception's message to
+#: this logger: any of them can carry personal data, and a provider's
+#: exception text can echo the request. Counts and type names only.
+logger = logging.getLogger(__name__)
 
 MAX_RESULTS = 30
 MAX_CONTEXT_CHUNKS = 15
@@ -69,12 +75,6 @@ def research(query: str, owner_id: str = Depends(precheck_ai_generation)):
             limit=MAX_RESULTS
         ).points
 
-        print("\n========== RESEARCH DEBUG ==========")
-        print(f"Query: {query}")
-        print(
-            f"Vector Results Retrieved: {len(search_results)}"
-        )
-
         # ==================================
         # Reranking
         # ==================================
@@ -84,8 +84,10 @@ def research(query: str, owner_id: str = Depends(precheck_ai_generation)):
             search_results
         )
 
-        print(
-            f"Reranked Results: {len(ranked_results)}"
+        logger.debug(
+            "research retrieval: %d vector results, %d after rerank",
+            len(search_results),
+            len(ranked_results),
         )
 
         # ==================================
@@ -212,10 +214,6 @@ CONTENT:
                     }
                 )
 
-        print(
-            f"Citations Collected: {len(citations)}"
-        )
-
         # ==================================
         # Final Context
         # ==================================
@@ -228,8 +226,10 @@ CONTENT:
             :MAX_CONTEXT_LENGTH
         ]
 
-        print(
-            f"Context Length: {len(context)}"
+        logger.debug(
+            "research context: %d citations, %d characters",
+            len(citations),
+            len(context),
         )
 
         # ==================================
@@ -294,10 +294,6 @@ CONTENT:
         # Postgres row written above, so these were dead writes to a disk
         # that is ephemeral in deployment anyway.
 
-        print(
-            "===================================\n"
-        )
-
         # ==================================
         # API Response
         # ==================================
@@ -341,9 +337,8 @@ CONTENT:
 
     except Exception as e:
 
-        print(
-            f"Research Error: {str(e)}"
-        )
+        # Type name only: str(e) can contain the query or a provider payload.
+        logger.warning("research failed: %s", type(e).__name__)
 
         # A provider failure gets a neutral, application-authored message
         # instead of the raw exception text.
