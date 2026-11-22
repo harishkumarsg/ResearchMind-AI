@@ -1,9 +1,14 @@
 # ResearchMind AI
 
+[![Tests](https://github.com/harishkumarsg/ResearchMind-AI/actions/workflows/tests.yml/badge.svg)](https://github.com/harishkumarsg/ResearchMind-AI/actions/workflows/tests.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 A private research workspace for academic PDFs. You upload papers, they are indexed into a vector database, and you can search them, ask questions with answers grounded in cited passages, compare papers, and export reports. Every query is scoped to the signed-in user's own library.
 
 > **Live app:** [www.researchmindlab.com](https://www.researchmindlab.com)
-> Status: personal project, built and maintained by Harish Kumar S G (solo).
+> Status: personal project, built and maintained by Harish Kumar S G (solo developer, AI-assisted; see [Provenance](#provenance)).
+
+![ResearchMind AI: a question answered with cited source passages](docs/screenshot.png)
 
 ---
 
@@ -35,19 +40,28 @@ FastAPI backend — the only authorization boundary
   ├── Supabase Storage   {owner}/{paper}/original.pdf
   ├── Qdrant Cloud       vectors with owner + page payload
   ├── Voyage AI          embeddings (voyage-4), optional reranking (rerank-3)
-  └── Groq               answer generation
+  └── Groq               answer generation (gpt-oss-120b)
 ```
 
 **Design decisions worth knowing**
 
 - **Tenant isolation is enforced twice:** an explicit `owner_id` filter in every query, and Postgres row-level security driven by the same verified identity. `owner_id` is never accepted from the client.
 - **Retrieval:** recursive character chunking (1,500 chars, 300 overlap), top-8 vector search, optional rerank to top-5.
-- **Grounding:** answers are generated only from retrieved passages; quotes in structured outputs are validated against the source text before being shown.
+- **Grounding:** answers are generated only from retrieved passages. In structured outputs, every evidence reference must point to a (page, chunk) pair that was actually supplied, or the whole object is rejected; a quote that is not an exact substring of the chunk it cites is dropped, never paraphrased or repaired. Drops are counted by reason (counts only, no text) so grounding failures stay visible.
 - **Cost control:** quotas and per-paper caps are checked *before* any embedding or generation call.
+
+## Deployment
+
+| Component | Host |
+|---|---|
+| Backend (FastAPI) | Railway (`backend/railway.toml`) |
+| Frontend (React) | Vercel |
+| Auth, Postgres, file storage | Supabase |
+| Vector search | Qdrant Cloud |
 
 ## Tests
 
-The backend suite runs fully offline: providers are mocked and persistence uses in-memory SQLite.
+1,300+ backend tests (`unittest`) and 450+ frontend tests (Vitest). The backend suite runs fully offline: providers are mocked and persistence uses in-memory SQLite.
 
 ```bash
 cd backend
@@ -58,11 +72,13 @@ export GROQ_API_KEY=x VOYAGE_API_KEY=x QDRANT_URL=http://localhost:1 QDRANT_API_
 python -m unittest discover -s tests
 ```
 
-Tests that need live infrastructure are skipped unless `RUN_LIVE_INFRA_TESTS=1`. Frontend: `cd research-compass-main && npm ci && npm test`. Both run in CI (`.github/workflows/tests.yml`).
+Tests that need live infrastructure are skipped unless `RUN_LIVE_INFRA_TESTS=1`. Frontend: `cd research-compass-main && npm ci --legacy-peer-deps && npm test` (the flag works around a known peer-range conflict in a locked prerelease dependency; a proper lockfile fix is pending). Both suites run in CI (`.github/workflows/tests.yml`).
 
 ## Retrieval evaluation
 
-`[PENDING — not yet measured.]` Planned: a labelled question set over a fixed paper set, reporting retrieval recall@k and MRR with and without reranking, citation correctness, and answer latency. Results will be added here only after they are run.
+`[PENDING — not yet measured.]`
+
+Planned protocol: a labelled set of 30–50 questions over a fixed set of about 10 papers, with the page that holds each answer marked by hand. Reported metrics: retrieval recall@5 and recall@8 and MRR, with and without reranking; citation correctness (does the cited page contain the answer?); and answer latency. Results will be added here only after they are run. Quote-grounding counts (quotes absent, or dropped as blank, too long or not verbatim) are already tallied per generation and will be reported alongside.
 
 ## Running locally
 
@@ -70,7 +86,7 @@ Tests that need live infrastructure are skipped unless `RUN_LIVE_INFRA_TESTS=1`.
 2. Apply `backend/migrations/bootstrap/app_role.sql`, then `0001` to `0007` in order. Set the app role's password out of band.
 3. Copy `backend/.env.example` to `backend/.env` and `research-compass-main/.env.example` to `research-compass-main/.env`, and fill in your own values.
 4. Backend: `cd backend && uvicorn app.main:app --reload` (API docs at `/docs`).
-5. Frontend: `cd research-compass-main && npm ci && npm run dev`.
+5. Frontend: `cd research-compass-main && npm ci --legacy-peer-deps && npm run dev`.
 
 ## Known limitations
 
@@ -81,7 +97,7 @@ Tests that need live infrastructure are skipped unless `RUN_LIVE_INFRA_TESTS=1`.
 
 ## Provenance
 
-The frontend in `research-compass-main/` was scaffolded with Lovable and then extended by hand (API integration, auth flow, workspace, tests). The backend, schema, migrations and tests were written for this project. `docs/MASTER_ROADMAP.md` records the development history phase by phase.
+The frontend in `research-compass-main/` was scaffolded with Lovable and then extended by hand (API integration, auth flow, workspace, tests). The backend, schema, migrations and tests were written for this project, with AI-assisted coding (Claude Code); I designed the architecture, retrieval approach and test strategy, and reviewed all of the code. `docs/MASTER_ROADMAP.md` records the development history phase by phase.
 
 ## License
 
