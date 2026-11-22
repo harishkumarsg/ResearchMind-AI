@@ -93,7 +93,7 @@ Planned protocol: a labelled set of 30–50 questions over a fixed set of about 
 - No retrieval-quality benchmark yet (see above).
 - Chunking is character-based, not section-aware; tables and equations in PDFs are extracted as plain text.
 - One global indexing slot: concurrent indexing requests queue.
-- Some limits in `.env.example` are configured but not yet enforced on read endpoints.
+- Rate limits and daily quotas (all listed in `backend/.env.example`) cover AI generation, indexing, search, upload and the report/evidence reads. `/papers`, `/stats`, `/paper-file` and paper deletion are not rate-limited yet, and per-minute burst limits live in process memory, so they reset on redeploy and don't span replicas (daily quotas are stored in Postgres).
 
 ## Provenance
 

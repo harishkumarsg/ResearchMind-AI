@@ -1,11 +1,11 @@
-import fitz
+import pymupdf
 
 
 def extract_pdf_text(pdf_path):
 
     try:
 
-        doc = fitz.open(pdf_path)
+        doc = pymupdf.open(pdf_path)
 
         text = ""
 
@@ -40,7 +40,7 @@ def extract_pdf_pages(pdf_path):
 
     try:
 
-        doc = fitz.open(pdf_path)
+        doc = pymupdf.open(pdf_path)
 
         pages = []
 

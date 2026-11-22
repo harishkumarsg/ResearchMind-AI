@@ -1,3 +1,7 @@
+import asyncio
+import os
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -70,6 +74,21 @@ from app.api.delete_paper import (
     router as delete_paper_router
 )
 
+from app.rag import vector_store
+
+# ====================================
+# Startup
+# ====================================
+
+
+@asynccontextmanager
+async def lifespan(_app):
+    # Log once whether Qdrant answers. This only reports: the app starts
+    # either way, and the probe has its own short timeout. It runs in a
+    # worker thread because the Qdrant client is synchronous.
+    await asyncio.to_thread(vector_store.check_qdrant_reachable)
+    yield
+
 # ====================================
 # FastAPI App
 # ====================================
@@ -93,7 +112,8 @@ AI-powered academic research platform with:
 • Voyage Embeddings and optional Reranking
 • Groq-hosted LLM Generation
 """,
-    version="3.1.0"
+    version="3.1.0",
+    lifespan=lifespan,
 )
 
 # ====================================
@@ -235,10 +255,15 @@ app.include_router(
 @app.get("/health")
 def health_check():
 
+    # Railway sets RAILWAY_GIT_COMMIT_SHA on deploys built from a Git
+    # commit, so this reports exactly which commit is running. Anywhere
+    # else (local runs, tests, a manual deploy) it reports "unknown".
+    commit = os.environ.get("RAILWAY_GIT_COMMIT_SHA", "").strip() or "unknown"
+
     return {
         "status": "healthy",
         "service": "ResearchMind AI",
-        "version": "3.1.0"
+        "commit": commit,
     }
 
 # ====================================

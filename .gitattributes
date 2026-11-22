@@ -1,0 +1,10 @@
+# Store text with LF line endings in the repository and check it out with LF
+# everywhere, whatever core.autocrlf says. Fixes CRLF churn and the eslint
+# line-ending noise on Windows.
+* text=auto eol=lf
+
+# Never convert line endings in binary files. Git's text detection classed
+# the PDF fixtures as text, so core.autocrlf rewrote them on Windows
+# checkouts and broke the golden checksum tests.
+*.pdf binary
+*.png binary

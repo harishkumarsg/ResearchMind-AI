@@ -40,3 +40,8 @@ research-compass-main/.vinxi/
 # OS
 .DS_Store
 Thumbs.db
+
+# Private local notes and reports (never commit)
+docs/blueprint/
+README.local.md
+STATUS_REPORT.md
