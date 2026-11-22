@@ -29,7 +29,7 @@ if BACKEND_DIR not in sys.path:
 
 import tests  # noqa: E402,F401 — hermetic bootstrap; must precede every app import
 
-import fitz  # noqa: E402
+import pymupdf  # noqa: E402
 
 from app.api.index_document import _build_chunks_for_paper  # noqa: E402
 from app.db.models import Paper  # noqa: E402
@@ -87,7 +87,7 @@ def informational_environment():
     """Recorded alongside the golden values for diagnosis; never matched."""
     return {
         "python_full": platform.python_version(),
-        "mupdf": getattr(fitz, "mupdf_version", None) or getattr(fitz, "VersionFitz", None),
+        "mupdf": getattr(pymupdf, "mupdf_version", None) or getattr(pymupdf, "VersionFitz", None),
         "langchain-core": _installed_version("langchain-core"),
     }
 

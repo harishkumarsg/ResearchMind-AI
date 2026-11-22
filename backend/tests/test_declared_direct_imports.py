@@ -16,7 +16,7 @@ they cannot produce false positives:
     directly is never reported.
 
 Import names are mapped to distributions from installed metadata
-(importlib.metadata.packages_distributions), so `fitz` resolves to PyMuPDF
+(importlib.metadata.packages_distributions), so `pymupdf` resolves to PyMuPDF
 and `jwt` to PyJWT without a hand-kept table. A module that maps to no
 installed distribution fails the test rather than being skipped.
 
@@ -104,8 +104,11 @@ class TestApplicationImportsAreDeclared(unittest.TestCase):
 
     def test_the_scan_finds_the_application_imports(self):
         # A scan that found nothing would make the next test pass vacuously.
-        for expected in ("fastapi", "fitz", "langchain_text_splitters", "sqlalchemy"):
+        for expected in ("fastapi", "pymupdf", "langchain_text_splitters", "sqlalchemy"):
             self.assertIn(expected, self.imports)
+
+    def test_pymupdf_is_imported_by_its_own_name_not_the_legacy_fitz_alias(self):
+        self.assertNotIn("fitz", self.imports, "use `import pymupdf`, not `import fitz`")
 
     def test_every_third_party_import_maps_to_an_installed_distribution(self):
         unmapped = {name: files for name, files in self.imports.items() if not self.providers.get(name)}
