@@ -41,6 +41,17 @@ load_dotenv()
 _groq_client = Groq(api_key=os.environ["GROQ_API_KEY"], **groq_client_options())
 GROQ_MODEL = "openai/gpt-oss-120b"
 
+#: Completion budget for one streamed answer. GROQ_MODEL is a reasoning
+#: model, and its reasoning tokens are drawn from this same budget before
+#: any answer text. At 512 it could spend the whole budget reasoning, and a
+#: stream that stops on the budget is now an error rather than a truncated
+#: answer, so the budget must leave room for both.
+ASK_MAX_TOKENS = 2048
+
+#: Groq's reasoning_effort for gpt-oss models. "low" keeps the reasoning
+#: short, so more of ASK_MAX_TOKENS is left for the answer itself.
+ASK_REASONING_EFFORT = "low"
+
 router = APIRouter()
 
 #: Never pass the question, the answer or an exception's message to this
@@ -486,7 +497,8 @@ def ask_stream(
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.0,
-                max_tokens=512,
+                max_tokens=ASK_MAX_TOKENS,
+                reasoning_effort=ASK_REASONING_EFFORT,
                 stream=True,
             )
 

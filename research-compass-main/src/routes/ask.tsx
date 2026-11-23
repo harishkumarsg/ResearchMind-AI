@@ -157,19 +157,6 @@ function AskPage() {
           </div>
         )}
 
-        {/* Error */}
-        {error && (
-          <div className="flex items-center gap-3 rounded-xl border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-            <AlertCircle className="h-4 w-4 shrink-0" />
-            <span className="flex-1">{error}</span>
-            {needsSignIn && (
-              <Button size="sm" variant="outline" onClick={() => signInWithGoogle()}>
-                Sign in
-              </Button>
-            )}
-          </div>
-        )}
-
         {/* Streaming answer */}
         {answer && (
           <div className="space-y-4">
@@ -185,6 +172,20 @@ function AskPage() {
                 {answer}
               </p>
             </div>
+          </div>
+        )}
+
+        {/* Error — beneath the answer: when the stream fails partway, the
+            text that already arrived stays visible above the error. */}
+        {error && (
+          <div className="flex items-center gap-3 rounded-xl border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span className="flex-1">{error}</span>
+            {needsSignIn && (
+              <Button size="sm" variant="outline" onClick={() => signInWithGoogle()}>
+                Sign in
+              </Button>
+            )}
           </div>
         )}
 

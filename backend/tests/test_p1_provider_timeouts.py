@@ -504,6 +504,7 @@ class TestGroqStreaming(EndpointTestCase):
         finally:
             for p in reversed(patches):
                 p.__exit__(None, None, None)
+        self.create = create
         return resp, _sse_events(resp.text)
 
     def assert_provider_timeout_frame(self, events):
@@ -632,6 +633,23 @@ class TestGroqStreaming(EndpointTestCase):
             "text": "Something went wrong on our side. Please try again.",
         })
         self.assertEqual(logs.output, ["WARNING:app.api.ask_stream:ask-stream failed: internal_error (RuntimeError)"])
+
+    def test_the_answer_budget_leaves_room_after_low_effort_reasoning(self):
+        """Reasoning and answer share max_tokens. 512 let the reasoning
+        alone exhaust it; a stream stopped on the budget is now an error,
+        so the budget is raised and the reasoning kept short."""
+        from app.api import ask_stream
+
+        self.assertEqual(ask_stream.ASK_MAX_TOKENS, 2048)
+        self.assertEqual(ask_stream.ASK_REASONING_EFFORT, "low")
+
+        self.run_ask(stream=FakeStream(chunks=["The ", "answer."]))
+
+        kwargs = self.create.call_args.kwargs
+        self.assertEqual(kwargs["model"], "openai/gpt-oss-120b")
+        self.assertEqual(kwargs["max_tokens"], 2048)
+        self.assertEqual(kwargs["reasoning_effort"], "low")
+        self.assertIs(kwargs["stream"], True)
 
     def test_a_normal_stream_is_unchanged_and_still_closed(self):
         stream = FakeStream(chunks=["The ", "answer."])

@@ -207,6 +207,26 @@ describe("PaperAskPanel", () => {
     expect(onCitationClick).toHaveBeenCalledWith(7);
   });
 
+  it("keeps a partial answer visible, with the error beneath it", async () => {
+    (streamAskQuestion as any).mockImplementation(async (_q: string, onEvent: any) => {
+      onEvent({ type: "token", text: "The method uses" });
+      onEvent({
+        type: "error",
+        code: "generation_incomplete",
+        text: "The answer could not be completed. Please try again.",
+      });
+    });
+
+    renderPanel();
+    ask();
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("The answer could not be completed. Please try again.");
+    const partial = screen.getByText("The method uses");
+    // The error follows the partial text in the document, not above it.
+    expect(partial.compareDocumentPosition(alert) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("shows a backend error without inventing wording", async () => {
     (streamAskQuestion as any).mockImplementation(async (_q: string, onEvent: any) => {
       onEvent({
