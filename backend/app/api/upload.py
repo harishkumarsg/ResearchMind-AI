@@ -179,8 +179,9 @@ async def upload_pdf_endpoint(
             db.rollback()
             if not _is_duplicate_file(error):
                 # A foreign key, NOT NULL or other constraint — a fault,
-                # not a race, so it is not reported as one.
-                print(f"Upload row not saved: {type(getattr(error, 'orig', error)).__name__}")
+                # not a race, so it is not reported as one. Not logged
+                # here: this module logs only Storage failures, through
+                # storage.log_storage_failure.
                 raise HTTPException(status_code=500, detail=UPLOAD_NOT_SAVED_DETAIL)
             # The same file, uploaded twice at once: the other request
             # created its row first. Answer as for any duplicate, by what

@@ -223,6 +223,20 @@ class RouteLoggingTestCase(unittest.TestCase):
         finally:
             session.close()
 
+    def paper_row_by_content(self, content_hash):
+        # Paper ids are random per incarnation (see PAPER IDENTITY in
+        # app/api/upload.py), so a row the upload created is found the way
+        # the upload itself finds duplicates: by (owner, content_hash).
+        session = self.SessionLocal()
+        try:
+            return (
+                session.query(Paper)
+                .filter(Paper.owner_id == uuid.UUID(OWNER), Paper.content_hash == content_hash)
+                .one()
+            )
+        finally:
+            session.close()
+
     def assert_nothing_sensitive(self, records):
         text = "\n".join(
             f"{record.name} {record.getMessage()} {record.exc_text or ''}" for record in records
@@ -261,14 +275,13 @@ class TestUploadLogsStorageFailures(RouteLoggingTestCase):
         self.assertNotIn("SENTINELMSG", resp.text)
 
     def test_the_row_still_gets_the_authored_detail(self):
-        from app.api.upload import STORAGE_FAILED_DETAIL, compute_paper_id
+        from app.api.upload import STORAGE_FAILED_DETAIL
 
         with patch("app.api.upload.upload_pdf", side_effect=rls_rejection()), \
                 self.assertLogs("app.api.upload", level="WARNING"):
             self.upload()
 
-        paper_id = compute_paper_id(OWNER, hashlib.sha256(PDF_BYTES).hexdigest())
-        row = self.paper_row(str(paper_id))
+        row = self.paper_row_by_content(hashlib.sha256(PDF_BYTES).hexdigest())
         self.assertEqual((row.status, row.status_detail), ("failed", STORAGE_FAILED_DETAIL))
 
     def test_missing_configuration_is_logged_by_type_only(self):
@@ -285,11 +298,8 @@ class TestUploadLogsStorageFailures(RouteLoggingTestCase):
         self.assert_nothing_sensitive(captured.records)
 
     def test_a_failed_existence_check_on_retry_is_logged(self):
-        from app.api.upload import compute_paper_id
-
         content_hash = hashlib.sha256(PDF_BYTES).hexdigest()
-        paper_id = str(compute_paper_id(OWNER, content_hash))
-        self.seed_paper(paper_id, "failed", content_hash=content_hash)
+        self.seed_paper(str(uuid.uuid4()), "failed", content_hash=content_hash)
 
         with patch("app.api.upload.storage_object_exists", side_effect=connect_error()), \
                 patch("app.api.upload.upload_pdf", return_value="ignored"), \
