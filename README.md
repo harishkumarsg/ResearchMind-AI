@@ -84,7 +84,7 @@ Planned protocol: a labelled set of 30–50 questions over a fixed set of about 
 
 1. Create a Supabase project, enable Google OAuth, and a Qdrant Cloud cluster.
 2. Apply `backend/migrations/bootstrap/app_role.sql`, then `0001` to `0007` in order. Set the app role's password out of band.
-3. Copy `backend/.env.example` to `backend/.env` and `research-compass-main/.env.example` to `research-compass-main/.env`, and fill in your own values.
+3. Copy `backend/.env.example` to `backend/.env` and `research-compass-main/.env.example` to `research-compass-main/.env`, and fill in your own values. Use Supabase's new API keys (Project Settings → API Keys): `SUPABASE_ANON_KEY` takes the publishable key (`sb_publishable_…`) and `SUPABASE_SERVICE_ROLE_KEY` a secret key (`sb_secret_…`). The names are historical; legacy JWT keys (`eyJ…`) are disabled on the production project, so any request made with one is rejected.
 4. Backend: `cd backend && uvicorn app.main:app --reload` (API docs at `/docs`).
 5. Frontend: `cd research-compass-main && npm ci --legacy-peer-deps && npm run dev`.
 
