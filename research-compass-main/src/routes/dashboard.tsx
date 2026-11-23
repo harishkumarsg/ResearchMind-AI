@@ -9,10 +9,11 @@ import {
   Loader2,
   MessageSquare,
   Plus,
+  TriangleAlert,
   Upload,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { getDashboardStats } from "@/lib/api";
+import { getDashboardStats, getPapersDetailed } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { queryKeys } from "@/lib/query-keys";
 import { useRequireAuth } from "@/lib/require-auth";
@@ -35,6 +36,21 @@ function Dashboard() {
     refetchInterval: 30_000,
     enabled: !!userId,
   });
+
+  // Same key, function and staleTime as the sidebar (AppShell), so React
+  // Query serves both from one cache entry: no extra /papers request.
+  const { data: papersDetailed } = useQuery({
+    queryKey: queryKeys.papersDetailed(userId),
+    queryFn: getPapersDetailed,
+    staleTime: 30_000,
+    enabled: !!userId,
+  });
+
+  // Shown only when something needs the user. While loading, on error,
+  // or with nothing failed, the card is absent and the grid has two
+  // columns: no placeholder value is ever displayed.
+  const failedCount = (papersDetailed ?? []).filter((p) => p.status === "failed").length;
+  const showNeedsAttention = failedCount > 0;
 
   return (
     <AppShell
@@ -66,7 +82,10 @@ function Dashboard() {
 
       {/* Stats */}
       <section className="mt-10">
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+        <div
+          data-testid="dashboard-stats"
+          className={`grid grid-cols-2 gap-4 ${showNeedsAttention ? "md:grid-cols-3" : ""}`}
+        >
           <StatCard
             icon={<FileText className="h-4 w-4 text-muted-foreground" />}
             label="Papers indexed"
@@ -77,12 +96,7 @@ function Dashboard() {
             label="Vector chunks"
             value={isLoading ? null : (stats?.total_chunks ?? 0)}
           />
-          <StatCard
-            icon={<BookOpen className="h-4 w-4 text-muted-foreground" />}
-            label="Collection"
-            value={isLoading ? null : "researchmind"}
-            isText
-          />
+          {showNeedsAttention && <NeedsAttentionCard count={failedCount} />}
         </div>
       </section>
 
@@ -165,12 +179,10 @@ function StatCard({
   icon,
   label,
   value,
-  isText,
 }: {
   icon: React.ReactNode;
   label: string;
-  value: number | string | null;
-  isText?: boolean;
+  value: number | null;
 }) {
   return (
     <div className="rounded-xl border border-border bg-surface p-5">
@@ -181,13 +193,36 @@ function StatCard({
       <div className="mt-1 text-3xl font-semibold tracking-tight">
         {value === null ? (
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-        ) : isText ? (
-          <span className="font-mono text-base">{value}</span>
         ) : (
-          (value as number).toLocaleString()
+          value.toLocaleString()
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Failed uploads or indexing runs. Uploading the same file again retries
+ * it: the backend reuses the failed paper's row. The sidebar lists which
+ * papers failed, with their status.
+ */
+function NeedsAttentionCard({ count }: { count: number }) {
+  return (
+    <Link
+      to="/upload"
+      className="block rounded-xl border border-destructive/40 bg-surface p-5 transition-colors hover:border-destructive"
+    >
+      <TriangleAlert className="h-4 w-4 text-destructive" aria-hidden="true" />
+      <div className="mt-3 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+        Needs attention
+      </div>
+      <div className="mt-1 text-3xl font-semibold tracking-tight">{count.toLocaleString()}</div>
+      <div className="mt-1 text-xs text-muted-foreground">
+        {count === 1
+          ? "paper failed. Upload it again to retry."
+          : "papers failed. Upload them again to retry."}
+      </div>
+    </Link>
   );
 }
 
@@ -207,7 +242,7 @@ function SectionHeader({
         to={link}
         className="text-xs text-muted-foreground hover:text-foreground"
       >
-        View all â†’
+        View all →
       </Link>
     </div>
   );

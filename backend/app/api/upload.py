@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -8,9 +9,18 @@ from app.core.auth import AuthenticatedIdentity, get_current_identity
 from app.core.usage_guard import charge_upload_unit, precheck_upload
 from app.db.models import Paper
 from app.db.session import get_db_session
-from app.services.storage import build_storage_path, storage_object_exists, upload_pdf
+from app.services.storage import (
+    build_storage_path,
+    log_storage_failure,
+    storage_object_exists,
+    upload_pdf,
+)
 
 router = APIRouter()
+
+#: Storage failures are logged through storage.log_storage_failure only:
+#: exception type and status codes, never the message, URL or key.
+logger = logging.getLogger(__name__)
 
 #: Authored here, never interpolated from an exception. status_detail is
 #: rendered in the UI, so a raw driver or SDK message would put internal
@@ -109,7 +119,8 @@ async def upload_pdf_endpoint(
         paper = existing
         try:
             needs_upload = not storage_object_exists(owner_id, str(paper.id), identity.token)
-        except Exception:
+        except Exception as e:
+            log_storage_failure(logger, "existence check", e)
             # Existence could not be verified — fail safe by assuming it
             # is NOT confirmed present, so the normal upload path below
             # is attempted rather than skipping a possibly-necessary one.
@@ -154,6 +165,7 @@ async def upload_pdf_endpoint(
                 file_bytes=bytes(buffer),
             )
         except Exception as e:
+            log_storage_failure(logger, "upload", e)
             paper.status = "failed"
             paper.status_detail = STORAGE_FAILED_DETAIL
             db.commit()
