@@ -88,6 +88,7 @@ from app.core.usage_guard import (
     precheck_ai_generation,
 )
 from app.db.session import session_scope
+from app.services.retrieval_guard import LIVE_STATUS
 from app.services.intelligence_schema import SECTION_NAMES, STATUS_ANSWERED
 from app.services.paper_intelligence_store import PaperNotOwned, get_intelligence
 from app.services.paper_relationship_evidence import (
@@ -234,10 +235,15 @@ def resolve_paper(owner_id: str, paper_id: str) -> Optional[Tuple[str, str]]:
     match, no similarity, None for a malformed id. Same helper
     /paper-intelligence uses, so "which paper is this" has one answer
     across the feature.
+
+    Only an indexed paper resolves, as for /paper-intelligence: a pair
+    with a paper still uploading or indexing, failed, or being removed is
+    answered as a pair with a missing paper, so neither paper's chunks
+    are read and no stored relationship of it is shown.
     """
     with session_scope(owner_id) as db:
         paper = resolve_owned_paper(db, owner_id, paper_id)
-        if paper is None:
+        if paper is None or paper.status != LIVE_STATUS:
             return None
         # Read out inside the session; the row expires on commit.
         return str(paper.id), paper.title
@@ -667,7 +673,8 @@ def read_paper_relationship(
 
       404 "Paper not found."   — either paper is unknown, malformed, or
             someone else's. One response for all three, so the wording
-            cannot probe whether another user holds a given id.
+            cannot probe whether another user holds a given id. Also when
+            either is this owner's but not indexed (see resolve_paper).
       422 same_paper           — both ids resolved to one owned paper.
       404 relationship_not_generated — both papers ARE this owner's, but
             nothing has been generated for the pair. Safe to distinguish:

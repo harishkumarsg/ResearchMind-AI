@@ -16,6 +16,7 @@ import {
   streamAskQuestion,
   getPapers,
   getDashboardStats,
+  deletePaper,
   uploadPaper,
   describeIndexResult,
   partitionCitations,
@@ -268,6 +269,63 @@ describe("getPapers / getDashboardStats — must be owner-scoped, not plain fetc
     const fetchSpy = vi.spyOn(global, "fetch");
 
     await expect(getDashboardStats()).rejects.toThrow(AuthenticationRequiredError);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("deletePaper — names one paper by its immutable id", () => {
+  const PAPER_ID = "8f2ff16c-8b35-5ee0-b193-9245f9c966b7";
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("sends DELETE /papers/<paper_id> with the caller's token, never the title route", async () => {
+    mockSupabaseWithSession("delete-token");
+    const fetchSpy = vi
+      .spyOn(global, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify({ status: "success" }), { status: 200 }));
+
+    await deletePaper(PAPER_ID);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, options] = fetchSpy.mock.calls[0];
+    expect(String(url)).toMatch(new RegExp(`/papers/${PAPER_ID}$`));
+    expect(String(url)).not.toMatch(/\/paper\//);
+    expect(options?.method).toBe("DELETE");
+    expect(new Headers(options?.headers).get("Authorization")).toBe("Bearer delete-token");
+  });
+
+  it("encodes the id rather than letting it shape the path", async () => {
+    mockSupabaseWithSession("delete-token");
+    const fetchSpy = vi
+      .spyOn(global, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify({ status: "success" }), { status: 200 }));
+
+    await deletePaper("../paper/x.pdf");
+
+    expect(String(fetchSpy.mock.calls[0][0])).toMatch(/\/papers\/\.\.%2Fpaper%2Fx\.pdf$/);
+  });
+
+  it("surfaces the server's own refusal, such as a 409 for a paper being indexed", async () => {
+    mockSupabaseWithSession("delete-token");
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({ detail: "This paper is still being indexed — try again shortly" }),
+        {
+          status: 409,
+        },
+      ),
+    );
+
+    await expect(deletePaper(PAPER_ID)).rejects.toThrow("This paper is still being indexed");
+  });
+
+  it("never calls fetch without a session", async () => {
+    mockSupabaseWithSession(null);
+    const fetchSpy = vi.spyOn(global, "fetch");
+
+    await expect(deletePaper(PAPER_ID)).rejects.toThrow(AuthenticationRequiredError);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

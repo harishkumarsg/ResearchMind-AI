@@ -3,7 +3,7 @@ import tempfile
 import uuid
 
 from fastapi import APIRouter, Depends
-from qdrant_client.models import FieldCondition, Filter, MatchValue, PointStruct
+from qdrant_client.models import FieldCondition, Filter, MatchValue, PointIdsList, PointStruct
 from sqlalchemy.orm import Session
 
 from typing import Callable, Optional
@@ -19,6 +19,7 @@ from app.db.session import get_db_session
 from app.rag.chunker import create_chunks
 from app.rag.embedder import create_embeddings
 from app.rag.vector_store import COLLECTION_NAME, client, create_collection
+from app.services import paper_lifecycle
 from app.services.metadata_extractor import (
     extract_abstract,
     extract_authors,
@@ -99,6 +100,7 @@ def _build_chunks_for_paper(paper: Paper, pages: list) -> list:
 def index_one_paper(
     paper: Paper,
     before_provider_work: Optional[Callable[[], None]] = None,
+    before_vector_writes: Optional[Callable[[list], None]] = None,
 ) -> int:
     """Fetches this paper's PDF from persistent Storage (never from
     Render's local disk), extracts/chunks/embeds it, and upserts — as a
@@ -109,6 +111,11 @@ def index_one_paper(
     embedding buffer is fully built in memory before Qdrant is touched
     at all, and any existing points for this paper are cleared
     immediately before the fresh upsert, not left mixed with old data.
+
+    before_vector_writes, if given, is called with the ids of the points
+    about to be written, immediately before the first write to this
+    paper's points. The indexer uses it to confirm it still holds its
+    claim on the paper; raising there means nothing is written.
     """
     owner_id = str(paper.owner_id)
     paper_id = str(paper.id)
@@ -175,10 +182,26 @@ def index_one_paper(
     ]
 
     create_collection()
+    if before_vector_writes is not None:
+        before_vector_writes([point.id for point in points])
     _clear_existing_points_for_paper(paper_id, owner_id)
     client.upsert(collection_name=COLLECTION_NAME, points=points)
 
     return len(points)
+
+
+def _discard_points(point_ids: list) -> None:
+    """Removes exactly the points this run wrote — never by filter, so a
+    later run's points for the same paper are never touched."""
+    if not point_ids:
+        return
+    try:
+        client.delete(
+            collection_name=COLLECTION_NAME,
+            points_selector=PointIdsList(points=point_ids),
+        )
+    except Exception as exc:
+        print(f"Indexing points not discarded: {type(exc).__name__}")
 
 
 @router.post("/index-document")
@@ -230,6 +253,11 @@ def index_document(
         quota_error = None
 
         for paper in pending:
+            # Read before anything commits: the row expires on commit, and
+            # may since have been deleted.
+            paper_uuid = paper.id
+            paper_id = str(paper_uuid)
+
             # Once the allowance runs out mid-batch, the remaining papers
             # are left exactly as they were — status "uploaded", so the
             # next run picks them up — rather than marked failed, which
@@ -237,14 +265,44 @@ def index_document(
             if quota_error is not None:
                 skipped.append(
                     {
-                        "paper_id": str(paper.id),
+                        "paper_id": paper_id,
                         "reason": "Daily indexing limit reached — try again tomorrow.",
                     }
                 )
                 continue
 
-            paper.status = "indexing"
-            db.commit()
+            # `pending` was read before this run started, and in a batch the
+            # last paper is reached minutes later. Claim it only if it is
+            # still 'uploaded': one a deletion has claimed, or another run
+            # is already indexing, is left to that request.
+            token = paper_lifecycle.claim(
+                db, paper_uuid, owner_uuid, from_status="uploaded", to_status="indexing"
+            )
+            if token is None:
+                continue
+
+            claim = {"token": token, "point_ids": []}
+
+            def confirm_claim(point_ids, claim=claim, paper_uuid=paper_uuid):
+                # Immediately before this paper's points are touched.
+                renewed = paper_lifecycle.renew(
+                    db, paper_uuid, owner_uuid, "indexing", claim["token"]
+                )
+                if renewed is None:
+                    raise paper_lifecycle.ClaimLost()
+                claim["token"] = renewed
+                claim["point_ids"] = list(point_ids)
+
+            def finish(to_status, status_detail=None, claim=claim, paper_uuid=paper_uuid):
+                return paper_lifecycle.transition(
+                    db,
+                    paper_uuid,
+                    owner_uuid,
+                    "indexing",
+                    claim["token"],
+                    to_status=to_status,
+                    status_detail=status_detail,
+                )
 
             try:
                 points_written = index_one_paper(
@@ -252,24 +310,23 @@ def index_document(
                     before_provider_work=lambda: charge_quota(
                         owner_id, limits_config.INDEX_RUN
                     ),
+                    before_vector_writes=confirm_claim,
                 )
-                paper.status = "indexed"
-                paper.status_detail = None
-                db.commit()
-                indexed_ids.append({"paper_id": str(paper.id), "points": points_written})
+            except paper_lifecycle.ClaimLost:
+                # Taken over before any vector was written: nothing to undo.
+                continue
             except QuotaExceeded as exc:
                 # Raised by the hook above, so no embedding was requested
                 # and nothing was written to Qdrant for this paper.
-                paper.status = "uploaded"
-                paper.status_detail = None
-                db.commit()
+                finish("uploaded")
                 quota_error = exc
                 skipped.append(
                     {
-                        "paper_id": str(paper.id),
+                        "paper_id": paper_id,
                         "reason": "Daily indexing limit reached — try again tomorrow.",
                     }
                 )
+                continue
             except Exception as e:
                 # A provider failure is recorded with neutral wording, since
                 # status_detail is shown to the user; any other failure keeps
@@ -280,10 +337,17 @@ def index_document(
                     if provider_failure is not None
                     else INDEXING_FAILED_DETAIL
                 )
-                paper.status = "failed"
-                paper.status_detail = detail
-                db.commit()
-                failed.append({"paper_id": str(paper.id), "error": detail})
+                if finish("failed", detail):
+                    failed.append({"paper_id": paper_id, "error": detail})
+                continue
+
+            if finish("indexed"):
+                indexed_ids.append({"paper_id": paper_id, "points": points_written})
+            else:
+                # The claim expired while the points were being written and
+                # a deletion took the paper over. Remove what this run wrote
+                # so nothing outlives the paper.
+                _discard_points(claim["point_ids"])
 
         # Nothing at all got through: report it as the limit rejection it
         # is, rather than a "success" with zero papers, which the frontend

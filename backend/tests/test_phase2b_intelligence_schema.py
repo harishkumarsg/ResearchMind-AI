@@ -32,6 +32,8 @@ if BACKEND_DIR not in sys.path:
 
 import json
 
+import tests  # noqa: E402,F401 — hermetic bootstrap; must precede every app import
+
 from app.services.intelligence_schema import (
     SECTION_NAMES,
     Evidence,

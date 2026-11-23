@@ -45,6 +45,8 @@ vi.mock("@/lib/api", () => ({
   getPaperDetails: vi.fn(),
   summarizePaper: vi.fn(),
   deletePaper: vi.fn(),
+  // The page reads the library list to find the id Delete would use.
+  getPapersDetailed: vi.fn().mockResolvedValue([]),
   retryUnlessRateLimited: () => false,
   // The page now also renders the Phase 2A workspace (viewer + ask
   // panel). This suite is about Summary markdown, so both are stubbed

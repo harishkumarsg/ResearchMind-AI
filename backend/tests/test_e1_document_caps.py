@@ -18,6 +18,8 @@ BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
+import tests  # noqa: E402,F401 — hermetic bootstrap; must precede every app import
+
 from app.api.index_document import index_one_paper
 
 OWNER = uuid.UUID("dddddddd-4444-4444-8444-dddddddddddd")

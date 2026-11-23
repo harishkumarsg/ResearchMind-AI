@@ -19,6 +19,8 @@ BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
+import tests  # noqa: E402,F401 — hermetic bootstrap; must precede every app import
+
 from dotenv import load_dotenv
 load_dotenv(os.path.join(BACKEND_DIR, ".env"))
 
@@ -28,17 +30,23 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.auth import get_current_owner_id
-from app.db.models import Base, Report
+from app.db.models import Base, Paper, Report
 
 TEST_OWNER = "dddddddd-dddd-dddd-dddd-dddddddddddd"
 OTHER_OWNER = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"
 MALICIOUS_OWNER = "ffffffff-ffff-ffff-ffff-ffffffffffff"
 
 
+def _paper_id(paper):
+    """The id the hits below carry for a paper title."""
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"report-test:{paper}"))
+
+
 def _hit(paper, page, text="some passage text"):
     hit = MagicMock()
     hit.payload = {
         "paper": paper,
+        "paper_id": _paper_id(paper),
         "source": f"{paper}.pdf",
         "page": page,
         "chunk_id": 0,
@@ -106,6 +114,22 @@ class ReportPersistenceTestCase(unittest.TestCase):
         finally:
             session.close()
 
+    def seed_indexed_papers(self, owner_id, *titles):
+        """Report context comes only from the owner's indexed papers
+        (app/services/retrieval_guard.py): these are the papers the hits
+        name."""
+        session = self.SessionLocal()
+        try:
+            for title in titles:
+                session.add(Paper(
+                    id=uuid.UUID(_paper_id(title)), owner_id=uuid.UUID(owner_id), title=title,
+                    content_hash="r" * 64, storage_path=f"{owner_id}/{_paper_id(title)}/original.pdf",
+                    file_size_bytes=1024, status="indexed",
+                ))
+            session.commit()
+        finally:
+            session.close()
+
 
 class TestReportRowIsPersisted(ReportPersistenceTestCase):
 
@@ -119,6 +143,7 @@ class TestReportRowIsPersisted(ReportPersistenceTestCase):
         mock_client.query_points.return_value = _query_points_result(
             [_hit("Attention Is All You Need", 3), _hit("BERT", 7)]
         )
+        self.seed_indexed_papers(TEST_OWNER, "Attention Is All You Need", "BERT")
         self.authenticate_as(TEST_OWNER)
 
         resp = self.client.get("/research", params={"query": "transformers"})
@@ -156,6 +181,8 @@ class TestReportRowIsPersisted(ReportPersistenceTestCase):
         mock_client.query_points.return_value = _query_points_result(
             [_hit("Paper A", 1), _hit("Paper B", 2)]
         )
+        # Indexed, so the comparison is between real, non-empty citations.
+        self.seed_indexed_papers(TEST_OWNER, "Paper A", "Paper B")
         self.authenticate_as(TEST_OWNER)
 
         body = self.client.get("/research", params={"query": "q"}).json()

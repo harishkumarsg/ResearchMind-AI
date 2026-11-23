@@ -1,0 +1,97 @@
+name: postgres-lifecycle
+
+# tests/test_paper_lifecycle_postgres.py against a disposable PostgreSQL 17:
+# the claim protocol under real row locks, as the restricted app role, with
+# RLS forced. Everything it touches is the service container below — no
+# repository secret, no DATABASE_URL, nothing that can reach Supabase.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-lifecycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:17
+        # Throwaway superuser for this container only: it lives for one job,
+        # is published on loopback only, and is never what the tests use.
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-throwaway-superuser
+          POSTGRES_DB: postgres
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Placeholders for modules that read configuration at import time, as
+      # in tests.yml. The Supabase URL is a dead loopback port.
+      GROQ_API_KEY: ci-placeholder
+      VOYAGE_API_KEY: ci-placeholder
+      QDRANT_URL: http://localhost:1
+      QDRANT_API_KEY: ci-placeholder
+      SUPABASE_URL: http://localhost:1
+      SUPABASE_ANON_KEY: ci-placeholder
+      SUPABASE_SERVICE_ROLE_KEY: ci-placeholder
+      # psql, for the setup steps only: the bootstrap superuser.
+      PGHOST: 127.0.0.1
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: ci-throwaway-superuser
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      # requirements.txt is a hashed lock: refuse anything unhashed or unpinned,
+      # install wheels only, then confirm the installed set is consistent.
+      - run: "pip install --require-hashes --only-binary=:all: -r requirements.txt"
+      - run: pip check
+
+      # The setup the test module's docstring prescribes, as superuser:
+      # the Supabase shim, the app role, then 0001 and 0003-0007 in order
+      # (0002 needs Supabase's storage schema and is not part of these tests).
+      - name: Create and migrate the test database
+        run: |
+          psql -v ON_ERROR_STOP=1 -d postgres -c "create database researchmind_lifecycle_test"
+          psql -v ON_ERROR_STOP=1 -d researchmind_lifecycle_test \
+            -f tests/fixtures/postgres/supabase_shim.sql \
+            -f migrations/bootstrap/app_role.sql \
+            -f migrations/0001_core_schema.sql \
+            -f migrations/0003_chat_messages.sql \
+            -f migrations/0004_usage_counters.sql \
+            -f migrations/0005_paper_intelligence.sql \
+            -f migrations/0006_paper_relationship.sql \
+            -f migrations/0007_core_tables_force_rls.sql
+
+      # A fresh random password per run, masked before anything can print
+      # it, set through a psql variable on stdin (never on a command line).
+      - name: Give the app role a per-run password
+        run: |
+          app_password="$(python -c 'import secrets; print(secrets.token_hex(32))')"
+          echo "::add-mask::${app_password}"
+          psql -v ON_ERROR_STOP=1 -d researchmind_lifecycle_test -v app_password="${app_password}" <<'SQL'
+          alter role researchmind_app with password :'app_password';
+          SQL
+          echo "POSTGRES_LIFECYCLE_TEST_URL=postgresql+psycopg://researchmind_app:${app_password}@127.0.0.1:5432/researchmind_lifecycle_test" >> "$GITHUB_ENV"
+
+      # The test module itself refuses any URL that is not loopback with an
+      # explicit port, a researchmind_lifecycle_test* database and the
+      # non-superuser app role under forced RLS.
+      - name: Run the PostgreSQL lifecycle tests
+        env:
+          RUN_POSTGRES_LIFECYCLE_TESTS: "1"
+        run: python -m unittest -v tests.test_paper_lifecycle_postgres

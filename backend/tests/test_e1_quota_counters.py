@@ -21,6 +21,8 @@ from unittest.mock import patch
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+import tests  # noqa: E402,F401 — hermetic bootstrap; must precede every app import
+
 from app.core import limits as limits_config
 from app.core.limits import QuotaExceeded, QuotaUnavailable
 from app.core.quota import charge, check_remaining, ensure_within_quota, peek

@@ -27,6 +27,8 @@ BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
+import tests  # noqa: E402,F401 — hermetic bootstrap; must precede every app import
+
 from dotenv import load_dotenv
 
 load_dotenv(os.path.join(BACKEND_DIR, ".env"))
@@ -376,6 +378,20 @@ class EndpointTestCase(unittest.TestCase):
     def tearDown(self):
         module_store.clear(USER_A)
 
+    def seed_evidence_paper(self):
+        """Retrieval uses only hits whose paper is one of the owner's
+        indexed papers (app/services/retrieval_guard.py); _hit() is from
+        this one."""
+        from app.db.models import Paper
+
+        with self.factory() as db:
+            db.add(Paper(
+                id=uuid.UUID(PAPER_ID), owner_id=uuid.UUID(USER_A), title="p.pdf",
+                content_hash="p" * 64, storage_path=f"{USER_A}/{PAPER_ID}/original.pdf",
+                file_size_bytes=1024, status="indexed",
+            ))
+            db.commit()
+
     def count(self, model, **filters):
         with self.factory() as db:
             q = db.query(model)
@@ -388,6 +404,10 @@ class EndpointTestCase(unittest.TestCase):
 # 4. Groq non-streaming timeout on the three JSON endpoints
 # ======================================================================
 class TestGroqNonStreamingTimeout(EndpointTestCase):
+    def setUp(self):
+        super().setUp()
+        self.seed_evidence_paper()
+
     def groq_times_out(self):
         from app.agents import qa_agent
 
@@ -434,6 +454,10 @@ class TestGroqNonStreamingTimeout(EndpointTestCase):
 # 5. Groq streaming
 # ======================================================================
 class TestGroqStreaming(EndpointTestCase):
+    def setUp(self):
+        super().setUp()
+        self.seed_evidence_paper()
+
     def run_ask(self, create_side_effect=None, stream=None, fake_clock=None):
         from app.api import ask_stream
 
@@ -606,6 +630,10 @@ class TestVoyageIndexingTimeout(EndpointTestCase):
 # 8. Voyage rerank timeout
 # ======================================================================
 class TestVoyageRerankTimeout(EndpointTestCase):
+    def setUp(self):
+        super().setUp()
+        self.seed_evidence_paper()
+
     def test_rerank_timeout_is_neutral(self):
         from app.rag import reranker
 
@@ -684,6 +712,10 @@ class TestQuotaUnchanged(EndpointTestCase):
 # 12. Successful calls unchanged
 # ======================================================================
 class TestSuccessfulCallsUnchanged(EndpointTestCase):
+    def setUp(self):
+        super().setUp()
+        self.seed_evidence_paper()
+
     def test_compare_success_path(self):
         from app.agents import qa_agent
 

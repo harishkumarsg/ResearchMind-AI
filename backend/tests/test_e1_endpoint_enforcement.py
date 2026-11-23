@@ -23,6 +23,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+import tests  # noqa: E402,F401 — hermetic bootstrap; must precede every app import
+
 from app.core import limits as limits_config
 from app.core.auth import get_current_owner_id
 from app.core.rate_limit import get_limiter

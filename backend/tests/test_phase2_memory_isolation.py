@@ -17,6 +17,8 @@ BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
+import tests  # noqa: E402,F401 — hermetic bootstrap; must precede every app import
+
 from dotenv import load_dotenv
 load_dotenv(os.path.join(BACKEND_DIR, ".env"))
 
@@ -105,11 +107,19 @@ class TestUserMemoryStoreIsolation(unittest.TestCase):
             store.get("")
 
 
-def _make_hit(paper="Paper A", text="relevant content"):
+#: Each owner's one paper. Retrieval uses only hits whose paper is one of
+#: the asking owner's indexed papers (app/services/retrieval_guard.py).
+PAPER_OF = {
+    USER_A: "a0a0a0a0-0000-4000-8000-000000000001",
+    USER_B: "b0b0b0b0-0000-4000-8000-000000000002",
+}
+
+
+def _make_hit(paper="Paper A", text="relevant content", paper_id=PAPER_OF[USER_A]):
     hit = MagicMock()
     hit.payload = {
         "paper": paper, "text": text, "chunk_id": 0, "page": 1,
-        "source": "a.pdf", "paper_id": "p1",
+        "source": "a.pdf", "paper_id": paper_id,
     }
     return hit
 
@@ -129,7 +139,28 @@ class TestAskStreamMemoryIsolation(unittest.TestCase):
         # one. Without it the endpoint would reach the live Supabase
         # project; with the persistence functions merely stubbed out, the
         # follow-up tests below could not pass at all.
-        attach_sqlite_db(self)
+        factory = attach_sqlite_db(self)
+        from app.db.models import Paper
+
+        with factory() as db:
+            for owner, paper_id in PAPER_OF.items():
+                db.add(Paper(
+                    id=uuid.UUID(paper_id), owner_id=uuid.UUID(owner), title="Paper A",
+                    content_hash="m" * 64, storage_path=f"{owner}/{paper_id}/original.pdf",
+                    file_size_bytes=1024, status="indexed",
+                ))
+            db.commit()
+
+    def _serve_own_papers(self, mock_qdrant, mock_rerank):
+        """Each request is answered from its own owner's paper: the Qdrant
+        double reads the owner from the verified owner filter, as Qdrant
+        would, and the reranker double keeps what it is given."""
+        def query_points(**kwargs):
+            owner = next(c.match.value for c in kwargs["query_filter"].must if c.key == "owner_id")
+            return MagicMock(points=[_make_hit(paper_id=PAPER_OF[owner])])
+
+        mock_qdrant.query_points.side_effect = query_points
+        mock_rerank.side_effect = lambda query, results: results
 
     def tearDown(self):
         self.app.dependency_overrides.clear()
@@ -149,9 +180,7 @@ class TestAskStreamMemoryIsolation(unittest.TestCase):
     def test_user_b_does_not_inherit_user_as_topic_or_history(
         self, mock_encode, mock_qdrant, mock_rerank, mock_groq
     ):
-        hit = _make_hit()
-        mock_qdrant.query_points.return_value.points = [hit]
-        mock_rerank.return_value = [hit]
+        self._serve_own_papers(mock_qdrant, mock_rerank)
         mock_groq.chat.completions.create.return_value = iter([])
 
         # User A asks a first, non-follow-up question — establishes topic.
@@ -179,9 +208,7 @@ class TestAskStreamMemoryIsolation(unittest.TestCase):
     def test_user_a_followup_still_uses_their_own_prior_topic(
         self, mock_encode, mock_qdrant, mock_rerank, mock_groq
     ):
-        hit = _make_hit()
-        mock_qdrant.query_points.return_value.points = [hit]
-        mock_rerank.return_value = [hit]
+        self._serve_own_papers(mock_qdrant, mock_rerank)
         mock_groq.chat.completions.create.return_value = iter([])
 
         self._authenticate_as(USER_A)
@@ -200,9 +227,7 @@ class TestAskStreamMemoryIsolation(unittest.TestCase):
     def test_sequential_requests_from_two_owners_do_not_cross_contaminate(
         self, mock_encode, mock_qdrant, mock_rerank, mock_groq
     ):
-        hit = _make_hit()
-        mock_qdrant.query_points.return_value.points = [hit]
-        mock_rerank.return_value = [hit]
+        self._serve_own_papers(mock_qdrant, mock_rerank)
         mock_groq.chat.completions.create.return_value = iter([])
 
         self._authenticate_as(USER_A)

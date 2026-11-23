@@ -21,6 +21,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+import tests  # noqa: E402,F401 — hermetic bootstrap; must precede every app import
+
 import app.db.session as session_module
 from app.db.models import Base, Report
 from app.db.session import get_db_session, get_session_factory, session_scope

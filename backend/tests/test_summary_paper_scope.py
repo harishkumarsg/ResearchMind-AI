@@ -30,6 +30,8 @@ BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
+import tests  # noqa: E402,F401 — hermetic bootstrap; must precede every app import
+
 from dotenv import load_dotenv
 
 load_dotenv(os.path.join(BACKEND_DIR, ".env"))
@@ -205,10 +207,20 @@ class SummarizeTestCase(unittest.TestCase):
         return self.create.call_args.kwargs["messages"][1]["content"]
 
 
+class IndexedPaperTestCase(SummarizeTestCase):
+    """The requested paper is one of the owner's indexed papers — the only
+    kind summarised (app/services/retrieval_guard.py) — so these tests are
+    about what happens once it is identified, not about identification."""
+
+    def setUp(self):
+        super().setUp()
+        self.seed_paper(PAPER, PAPER_ID)
+
+
 # ======================================================================
 # 1. The whole paper reaches the model
 # ======================================================================
-class TestSummaryUsesTheWholePaper(SummarizeTestCase):
+class TestSummaryUsesTheWholePaper(IndexedPaperTestCase):
     def test_multiple_chunks_from_the_requested_paper_are_used(self):
         resp = self.run_summary(PAPER_PAYLOADS)
         sent = self.sent_to_model()
@@ -351,7 +363,7 @@ class TestPaperIdentification(SummarizeTestCase):
 # ======================================================================
 # 2. Isolation
 # ======================================================================
-class TestIsolation(SummarizeTestCase):
+class TestIsolation(IndexedPaperTestCase):
     def test_the_fetch_filter_pins_owner_and_paper(self):
         self.run_summary(PAPER_PAYLOADS)
 
@@ -385,17 +397,22 @@ class TestIsolation(SummarizeTestCase):
         keys = {c.key: c.match.value for c in must}
         self.assertEqual(keys.get("paper_id"), PAPER_ID)
 
-    def test_falls_back_to_the_title_filter_when_no_paper_id_is_stored(self):
+    def test_chunks_without_a_paper_id_are_never_summarised(self):
+        """Replaces the title-filter fallback this test used to pin. A point
+        with no paper_id cannot be tied to a paper row, so it is never
+        evidence (app/services/retrieval_guard.py) — not even under the
+        requested paper's title. None exist in researchmind_v2: every point
+        written to it has carried paper_id since the collection was made."""
         legacy = [
             {**p, "paper_id": ""} for p in PAPER_PAYLOADS
         ]
 
-        self.run_summary(legacy, search_hits=[_hit(legacy[0])])
+        resp = self.run_summary(legacy, search_hits=[_hit(legacy[0])])
 
-        keys = {c.key: c.match.value for c in self.fetch_kwargs["query_filter"].must}
-        self.assertEqual(keys.get("owner_id"), OWNER_A)
-        self.assertEqual(keys.get("paper"), PAPER)
-        self.assertNotIn("paper_id", keys)
+        body = resp.json()
+        self.assertEqual(body["status"], "error")
+        self.assertIn("Paper not found", body["message"])
+        self.create.assert_not_called()
 
 
 # ======================================================================
@@ -440,7 +457,7 @@ class TestContextBudget(unittest.TestCase):
         self.assertEqual(select_within_budget([], SUMMARY_CONTEXT_CHARS), [])
 
 
-class TestBudgetEndToEnd(SummarizeTestCase):
+class TestBudgetEndToEnd(IndexedPaperTestCase):
     def test_the_model_receives_at_most_the_summary_budget(self):
         big = [
             _payload(PAPER, PAPER_ID, page, 0, "z" * 2000)
@@ -462,7 +479,7 @@ class TestBudgetEndToEnd(SummarizeTestCase):
 # ======================================================================
 # 4. Metadata reaches the prompt
 # ======================================================================
-class TestStoredMetadataReachesThePrompt(SummarizeTestCase):
+class TestStoredMetadataReachesThePrompt(IndexedPaperTestCase):
     def test_authors_keywords_and_abstract_are_supplied(self):
         self.run_summary(PAPER_PAYLOADS)
         sent = self.sent_to_model()
@@ -488,7 +505,7 @@ class TestStoredMetadataReachesThePrompt(SummarizeTestCase):
 # ======================================================================
 # 5. Existing behaviour that must not change
 # ======================================================================
-class TestExistingBehaviourPreserved(SummarizeTestCase):
+class TestExistingBehaviourPreserved(IndexedPaperTestCase):
     def test_the_anti_hallucination_rules_are_still_in_the_prompt(self):
         self.run_summary(PAPER_PAYLOADS)
         sent = self.sent_to_model()

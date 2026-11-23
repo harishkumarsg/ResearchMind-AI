@@ -19,6 +19,8 @@ BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
+import tests  # noqa: E402,F401 — hermetic bootstrap; must precede every app import
+
 from dotenv import load_dotenv
 load_dotenv(os.path.join(BACKEND_DIR, ".env"))
 
@@ -38,6 +40,7 @@ MALICIOUS = "ffffffff-ffff-ffff-ffff-ffffffffffff"
 
 PAPER_ID = "11111111-1111-1111-1111-111111111111"
 FOREIGN_PAPER_ID = "22222222-2222-2222-2222-222222222222"
+UNKNOWN_PAPER_ID = "33333333-3333-3333-3333-333333333333"
 
 
 def _hit(paper="Attention Is All You Need", page=3, paper_id=PAPER_ID):
@@ -158,8 +161,24 @@ class ChatPersistenceTestCase(unittest.TestCase):
 
     # -- endpoint driver ----------------------------------------------
 
+    def evidence_paper(self):
+        """The paper default hits come from: one the asking owner really
+        has, indexed — retrieval uses no other
+        (app/services/retrieval_guard.py). USER_A's is PAPER_ID, so the
+        current_paper_id assertions below mean what they did."""
+        owner = self._current_owner
+        paper_id = PAPER_ID if owner == USER_A else str(uuid.uuid5(uuid.NAMESPACE_URL, f"evidence:{owner}"))
+        session = self.factory()
+        try:
+            exists = session.get(Paper, uuid.UUID(paper_id)) is not None
+        finally:
+            session.close()
+        if not exists:
+            self.seed_paper(paper_id, owner)
+        return paper_id
+
     def ask(self, question, hits=None, answer="A grounded answer [Page 3].", **params):
-        hits = [_hit()] if hits is None else hits
+        hits = [_hit(paper_id=self.evidence_paper())] if hits is None else hits
         with patch("app.api.ask_stream.encode_query", return_value=[0.1] * 1024), \
              patch("app.api.ask_stream.client") as mock_qdrant, \
              patch("app.api.ask_stream.rerank_results", side_effect=lambda q, r: r), \
@@ -316,13 +335,18 @@ class TestSessionPointerPersistence(ChatPersistenceTestCase):
 
     def test_unknown_paper_id_is_ignored_rather_than_failing(self):
         """No papers row exists for this id — writing it would be a FK
-        violation that sinks an otherwise good answer."""
+        violation that sinks an otherwise good answer. Retrieval now uses
+        no hit whose paper is not one of the owner's indexed papers
+        (app/services/retrieval_guard.py), so such a hit is neither
+        written nor answered from: the request completes cleanly with the
+        no-evidence message, and only the user's turn is recorded."""
         self.authenticate_as(USER_A)
-        resp = self.ask("What is attention?")
+        resp = self.ask("What is attention?", hits=[_hit(paper_id=UNKNOWN_PAPER_ID)])
 
         self.assertEqual(resp.status_code, 200)
+        self.assertIn("No relevant papers found", resp.text)
         self.assertIsNone(self.sessions()[0].current_paper_id)
-        self.assertEqual(len(self.messages()), 2)
+        self.assertEqual([m.role for m in self.messages()], ["user"])
 
     def test_malformed_paper_id_in_payload_is_ignored(self):
         self.authenticate_as(USER_A)
@@ -350,9 +374,10 @@ class TestSessionUpdatedAt(ChatPersistenceTestCase):
         self.authenticate_as(USER_A)
 
         # First question establishes the topic, so the follow-up below
-        # passes current_topic=None. No paper is seeded, so the unknown
-        # paper_id is ignored and current_paper_id stays None too —
-        # making the second turn a genuinely pure follow-up.
+        # passes current_topic=None. Both turns are answered from the same
+        # paper — the only evidence retrieval accepts is a paper the owner
+        # has — so current_paper_id is set by the first turn and left
+        # unchanged by the second, making it a genuinely pure follow-up.
         self.ask("What is explainable AI?")
         before = self._as_utc(self.sessions()[0].updated_at)
 
@@ -366,7 +391,7 @@ class TestSessionUpdatedAt(ChatPersistenceTestCase):
 
         # Confirm this really was a pure follow-up.
         self.assertEqual(session.current_topic, "What is explainable AI?")
-        self.assertIsNone(session.current_paper_id)
+        self.assertEqual(session.current_paper_id, uuid.UUID(PAPER_ID))
 
         after = self._as_utc(session.updated_at)
         self.assertEqual(
@@ -569,7 +594,7 @@ class TestNoLongLivedConnection(ChatPersistenceTestCase):
              patch("app.api.ask_stream.rerank_results", side_effect=lambda q, r: r), \
              patch("app.api.ask_stream._groq_client") as mock_groq:
 
-            mock_qdrant.query_points.return_value.points = [_hit()]
+            mock_qdrant.query_points.return_value.points = [_hit(paper_id=self.evidence_paper())]
             mock_groq.chat.completions.create.side_effect = watching_stream
 
             resp = self.client.get("/ask-stream", params={"question": "q?"})

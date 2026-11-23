@@ -53,6 +53,7 @@ from app.core.limits import UsageLimitError
 from app.core.providers import classify_provider_error, internal_error_payload
 from app.core.usage_guard import guard_cheap_read
 from app.db.session import session_scope
+from app.services.retrieval_guard import LIVE_STATUS
 from app.services.intelligence_schema import (
     SECTION_NAMES,
     IntelligenceValidationError,
@@ -109,9 +110,10 @@ def reindexed_since(
     application's clock, in UTC.
 
     CONSERVATIVE, NOT A PROOF. True means the chunks MAY differ from the
-    ones the analysis read — it says nothing about any single chunk, and
-    a paper whose delete was interrupted reads True as well. False means
-    only that no later change to the row was recorded.
+    ones the analysis read — it says nothing about any single chunk. (A
+    paper whose delete was interrupted is not served at all: see
+    resolve_paper.) False means only that no later change to the row was
+    recorded.
 
     Strictly greater: a stamp equal to `generated_at` is not evidence of
     a later change. A missing stamp is not evidence of one either.
@@ -129,10 +131,14 @@ def resolve_paper(
     Delegates to /paper-file's resolver, the authoritative by-id lookup:
     exact `papers.id` AND `papers.owner_id`, None for a malformed id, an
     unknown id and another owner's id alike.
+
+    Only an indexed paper resolves, as for /paper-intelligence: one still
+    uploading or indexing, failed, or being removed is answered as a
+    missing paper, so its chunks are never read back as evidence.
     """
     with session_scope(owner_id) as db:
         paper = resolve_owned_paper(db, owner_id, paper_id)
-        if paper is None:
+        if paper is None or paper.status != LIVE_STATUS:
             return None
         # Read out inside the session; the row expires on commit.
         return str(paper.id), paper.updated_at
@@ -167,7 +173,8 @@ def read_paper_evidence(
     Outcomes:
 
       404  — the paper does not exist, is malformed, or belongs to
-             someone else. One response for all three.
+             someone else. One response for all three. Also for this
+             owner's paper when it is not indexed (see resolve_paper).
       200 status=not_generated — the paper IS this owner's, but there is
              no stored analysis. Qdrant is not read.
       200 status=success — one item per distinct cited (page, chunk_id),
