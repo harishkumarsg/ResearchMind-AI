@@ -20,6 +20,7 @@ A paper that does not exist and a paper belonging to someone else are
 deliberately indistinguishable: both return the same 404, so the
 response cannot be used to probe whether another user holds a given id.
 """
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, Response, status
@@ -28,9 +29,13 @@ from sqlalchemy.orm import Session
 from app.core.auth import get_current_owner_id
 from app.db.models import Paper
 from app.db.session import get_db_session
-from app.services.storage import fetch_pdf
+from app.services.storage import fetch_pdf, log_storage_failure
 
 router = APIRouter()
+
+#: Storage failures are logged through storage.log_storage_failure only:
+#: exception type and status codes, never the message, URL or key.
+logger = logging.getLogger(__name__)
 
 #: One authored message for every miss. See the module docstring: the
 #: wording must not distinguish "no such paper" from "not yours".
@@ -79,8 +84,10 @@ def paper_file(
         # this paper. owner_id is the verified JWT value, never the
         # client's, so the Storage path cannot be pointed elsewhere.
         pdf_bytes = fetch_pdf(owner_id=owner_id, paper_id=str(paper.id))
-    except Exception:
-        # The Storage client's message can name buckets, paths and URLs.
+    except Exception as e:
+        # The Storage client's message can name buckets, paths and URLs:
+        # it is neither returned nor logged. Type and status codes only.
+        log_storage_failure(logger, "download", e)
         response.status_code = status.HTTP_502_BAD_GATEWAY
         return {"status": "error", "message": UNAVAILABLE_MESSAGE}
 
