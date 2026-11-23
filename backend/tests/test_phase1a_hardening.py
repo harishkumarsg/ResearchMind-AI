@@ -368,16 +368,17 @@ class TestQueryEmbeddingQuota(HardeningTestCase):
         self.assertEqual(enc.call_count, 1)
         self.assertEqual(self.counter(OWNER_A, QUERY_EMBEDDING), 1)
 
-    def test_paper_details_is_also_metered(self):
+    def test_paper_details_is_not_metered_as_an_embedding(self):
+        """/paper-details no longer embeds anything, so it must not spend
+        the query-embedding allowance."""
         self.authenticate_as(OWNER_A)
 
-        with patch("app.api.paper_details.encode_query", return_value=[0.1]), patch(
-            "app.api.paper_details.client"
-        ) as qdrant:
-            qdrant.query_points.return_value.points = []
-            self.client.get("/paper-details", params={"paper_name": "p.pdf"})
+        with patch("app.api.paper_details.client") as qdrant:
+            qdrant.scroll.return_value = ([], None)
+            resp = self.client.get("/paper-details", params={"paper_name": "p.pdf"})
 
-        self.assertEqual(self.counter(OWNER_A, QUERY_EMBEDDING), 1)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(self.counter(OWNER_A, QUERY_EMBEDDING), 0)
 
     def test_quota_exhaustion_returns_429_and_calls_no_provider(self):
         self.authenticate_as(OWNER_A)
@@ -529,6 +530,21 @@ class TestCheapReadGuard(HardeningTestCase):
 
         # Same metric, same bucket — export is rejected too.
         self.assertEqual(self.client.get("/export-report").status_code, 429)
+
+    def test_paper_details_is_burst_guarded_as_a_cheap_read(self):
+        self.authenticate_as(OWNER_A)
+        per_minute = limits_for(CHEAP_READ).per_minute
+
+        with patch("app.api.paper_details.client") as qdrant:
+            qdrant.scroll.return_value = ([], None)
+            for _ in range(per_minute):
+                self.client.get("/paper-details", params={"paper_name": "p.pdf"})
+            resp = self.client.get("/paper-details", params={"paper_name": "p.pdf"})
+
+        self.assertEqual(resp.status_code, 429)
+        self.assertEqual(resp.json()["code"], "rate_limited")
+        # Rejected before the handler: the 61st request never reached Qdrant.
+        self.assertEqual(qdrant.scroll.call_count, 0)
 
     def test_papers_is_not_rate_limited(self):
         self.authenticate_as(OWNER_A)

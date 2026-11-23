@@ -160,16 +160,6 @@ export function PaperAskPanel({
         </div>
       )}
 
-      {error && (
-        <div
-          role="alert"
-          className="flex items-start gap-2 rounded-xl border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive"
-        >
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-          {error}
-        </div>
-      )}
-
       {answer && (
         <div className="rounded-xl border border-border bg-surface p-4">
           <h3 className="sr-only">Answer</h3>
@@ -182,6 +172,18 @@ export function PaperAskPanel({
           >
             <ReactMarkdown>{answer}</ReactMarkdown>
           </div>
+        </div>
+      )}
+
+      {/* Beneath the answer: when the stream fails partway, the text
+          that already arrived stays visible above the error. */}
+      {error && (
+        <div
+          role="alert"
+          className="flex items-start gap-2 rounded-xl border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+        >
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          {error}
         </div>
       )}
 

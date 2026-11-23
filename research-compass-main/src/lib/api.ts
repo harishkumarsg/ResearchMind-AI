@@ -211,6 +211,8 @@ export interface DashboardStats {
 
 export interface AskStreamEvent {
   type: "status" | "token" | "done" | "error";
+  /** On an error frame: the backend's failure code, when it sent one. */
+  code?: string;
   text?: string;
   citations?: Citation[];
   sources?: Citation[];
@@ -269,12 +271,26 @@ function throwForErrorBody(data: { message?: unknown }, fallback: string): never
 }
 
 /**
+ * A refusal that asking again cannot change: the paper does not exist, or
+ * its title names more than one paper. Never retried.
+ */
+export class FinalRequestError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "FinalRequestError";
+  }
+}
+
+/**
  * React Query retry rule for provider-backed queries: a throttled request
- * must never be retried, since that only spends more of the same quota.
- * Everything else keeps the default three attempts.
+ * must never be retried, since that only spends more of the same quota,
+ * and neither is a final refusal. Everything else keeps the default three
+ * attempts.
  */
 export function retryUnlessRateLimited(failureCount: number, error: Error): boolean {
-  return !(error instanceof RateLimitError) && failureCount < 3;
+  return (
+    !(error instanceof RateLimitError || error instanceof FinalRequestError) && failureCount < 3
+  );
 }
 
 export async function searchPapers(query: string, signal?: AbortSignal): Promise<SearchResult[]> {
@@ -329,6 +345,25 @@ export async function streamAskQuestion(
   const decoder = new TextDecoder();
   let buffer = "";
 
+  // Every stream must end in exactly one visible outcome. Two endings used
+  // to show nothing: a "done" frame with no answer text (the page then
+  // listed the retrieved passages as "also retrieved" under an empty
+  // answer), and a stream that closed with no final frame at all (the Ask
+  // page kept its spinner). Both become an error frame here, so every
+  // caller renders them through its existing error path.
+  let answered = false;
+  let finished = false;
+  const deliver = (received: AskStreamEvent) => {
+    if (finished) return;
+    if (received.type === "token" && received.text) answered = true;
+    const event: AskStreamEvent =
+      received.type === "done" && !answered
+        ? { type: "error", code: "generation_incomplete", text: ANSWER_INCOMPLETE_MESSAGE }
+        : received;
+    if (event.type === "done" || event.type === "error") finished = true;
+    onEvent(event);
+  };
+
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -346,16 +381,29 @@ export async function streamAskQuestion(
         if (!line.startsWith("data:")) continue;
         const jsonText = line.slice(5).trim();
         if (!jsonText) continue;
+        let event: AskStreamEvent;
         try {
-          onEvent(JSON.parse(jsonText) as AskStreamEvent);
+          event = JSON.parse(jsonText) as AskStreamEvent;
         } catch {
           // Malformed frame — skip it, matching the previous
           // EventSource implementation's silent-skip behavior.
+          continue;
         }
+        deliver(event);
       }
     }
   }
+
+  if (!finished) {
+    deliver({ type: "error", code: "stream_interrupted", text: ANSWER_INTERRUPTED_MESSAGE });
+  }
 }
+
+/** Matches the backend's generation_incomplete wording (app/core/providers.py). */
+const ANSWER_INCOMPLETE_MESSAGE = "The answer could not be completed. Please try again.";
+
+const ANSWER_INTERRUPTED_MESSAGE =
+  "The connection closed before the answer finished. Please try again.";
 
 export async function uploadPaper(file: File): Promise<UploadResult> {
   const formData = new FormData();
@@ -488,12 +536,25 @@ export async function getPaperFileUrl(paperId: string): Promise<string> {
   return URL.createObjectURL(await response.blob());
 }
 
+/** /paper-details error codes that the same request will always get again. */
+const FINAL_PAPER_DETAILS_CODES = new Set(["paper_not_found", "ambiguous_title"]);
+
 export async function getPaperDetails(paperName: string): Promise<PaperDetails> {
   const response = await authFetch(
     `${API_BASE_URL}/paper-details?paper_name=${encodeURIComponent(paperName)}`,
   );
+  // The backend's own burst limit answers 429 with a normalized body;
+  // treated like provider throttling, so it is not retried into.
+  if (response.status === 429) {
+    throw new RateLimitError();
+  }
   const data = await response.json();
   if (data.status !== "success") {
+    if (FINAL_PAPER_DETAILS_CODES.has(data.code)) {
+      throw new FinalRequestError(
+        typeof data.message === "string" && data.message ? data.message : "Paper not found.",
+      );
+    }
     throwForErrorBody(data, "Paper details fetch failed");
   }
   return data;

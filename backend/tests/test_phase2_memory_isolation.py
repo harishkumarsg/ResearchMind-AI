@@ -11,6 +11,7 @@ import sys
 import threading
 import unittest
 import uuid
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -124,6 +125,14 @@ def _make_hit(paper="Paper A", text="relevant content", paper_id=PAPER_OF[USER_A
     return hit
 
 
+def _answer_stream(**_kwargs):
+    """A one-token answer. A turn is persisted, and so sets the topic a
+    follow-up builds on, only when the model actually answered."""
+    return iter([SimpleNamespace(choices=[SimpleNamespace(
+        delta=SimpleNamespace(content="An answer."), finish_reason="stop",
+    )])])
+
+
 class TestAskStreamMemoryIsolation(unittest.TestCase):
     """Integration-level: through the real /ask-stream endpoint."""
 
@@ -181,7 +190,7 @@ class TestAskStreamMemoryIsolation(unittest.TestCase):
         self, mock_encode, mock_qdrant, mock_rerank, mock_groq
     ):
         self._serve_own_papers(mock_qdrant, mock_rerank)
-        mock_groq.chat.completions.create.return_value = iter([])
+        mock_groq.chat.completions.create.side_effect = _answer_stream
 
         # User A asks a first, non-follow-up question — establishes topic.
         self._authenticate_as(USER_A)
@@ -209,7 +218,7 @@ class TestAskStreamMemoryIsolation(unittest.TestCase):
         self, mock_encode, mock_qdrant, mock_rerank, mock_groq
     ):
         self._serve_own_papers(mock_qdrant, mock_rerank)
-        mock_groq.chat.completions.create.return_value = iter([])
+        mock_groq.chat.completions.create.side_effect = _answer_stream
 
         self._authenticate_as(USER_A)
         self._ask("What is explainable AI?")
@@ -228,7 +237,7 @@ class TestAskStreamMemoryIsolation(unittest.TestCase):
         self, mock_encode, mock_qdrant, mock_rerank, mock_groq
     ):
         self._serve_own_papers(mock_qdrant, mock_rerank)
-        mock_groq.chat.completions.create.return_value = iter([])
+        mock_groq.chat.completions.create.side_effect = _answer_stream
 
         self._authenticate_as(USER_A)
         self._ask("Tell me about transformers")

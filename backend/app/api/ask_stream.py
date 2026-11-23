@@ -1,3 +1,4 @@
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -13,6 +14,7 @@ from qdrant_client.models import FieldCondition, Filter, MatchValue
 
 from app.core.limits import AI_GENERATION, UsageLimitError
 from app.core.providers import (
+    IncompleteGeneration,
     ProviderTimeout,
     classify_provider_error,
     groq_client_options,
@@ -39,7 +41,23 @@ load_dotenv()
 _groq_client = Groq(api_key=os.environ["GROQ_API_KEY"], **groq_client_options())
 GROQ_MODEL = "openai/gpt-oss-120b"
 
+#: Completion budget for one streamed answer. GROQ_MODEL is a reasoning
+#: model, and its reasoning tokens are drawn from this same budget before
+#: any answer text. At 512 it could spend the whole budget reasoning, and a
+#: stream that stops on the budget is now an error rather than a truncated
+#: answer, so the budget must leave room for both.
+ASK_MAX_TOKENS = 2048
+
+#: Groq's reasoning_effort for gpt-oss models. "low" keeps the reasoning
+#: short, so more of ASK_MAX_TOKENS is left for the answer itself.
+ASK_REASONING_EFFORT = "low"
+
 router = APIRouter()
+
+#: Never pass the question, the answer or an exception's message to this
+#: logger: any of them can carry personal data, and a provider's exception
+#: text can echo the request. Failure codes and type names only.
+logger = logging.getLogger(__name__)
 
 SEARCH_LIMIT = 8
 TOP_CHUNKS = 4
@@ -460,6 +478,7 @@ def ask_stream(
 
             # Stream tokens from Groq
             answer_parts = []
+            finish_reason = None
 
             # End-to-end deadline, started before the request is made so the
             # time spent establishing the stream counts too. It is checked as
@@ -478,7 +497,8 @@ def ask_stream(
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.0,
-                max_tokens=512,
+                max_tokens=ASK_MAX_TOKENS,
+                reasoning_effort=ASK_REASONING_EFFORT,
                 stream=True,
             )
 
@@ -486,7 +506,14 @@ def ask_stream(
                 for chunk in stream_response:
                     if time.monotonic() - stream_started > stream_deadline:
                         raise ProviderTimeout()
-                    token = chunk.choices[0].delta.content
+                    # A chunk can carry no choice at all (a trailing usage
+                    # chunk), and a reasoning model's reasoning arrives
+                    # outside delta.content; neither is answer text.
+                    if not chunk.choices:
+                        continue
+                    choice = chunk.choices[0]
+                    finish_reason = getattr(choice, "finish_reason", None) or finish_reason
+                    token = getattr(choice.delta, "content", None)
                     if token:
                         answer_parts.append(token)
                         yield generate_sse_event({"type": "token", "text": token})
@@ -499,6 +526,17 @@ def ask_stream(
                     close_stream()
 
             full_answer = "".join(answer_parts).strip()
+
+            # A stream can end without an answer: the model is a reasoning
+            # model, and its reasoning draws from the same max_tokens
+            # budget, so it can spend all of it before writing any visible
+            # text. That used to fall through to the "done" frame below
+            # with an empty answer and the retrieved passages, which the
+            # Ask page rendered as "also retrieved" sources under no answer
+            # and no error. Either case is an incomplete generation: an
+            # error frame, and the assistant turn is not persisted.
+            if finish_reason == "length" or not full_answer:
+                raise IncompleteGeneration(finish_reason)
 
             # Which pages did the answer actually cite? This only marks
             # evidence as used or unused — nothing is filtered out, so the
@@ -580,13 +618,22 @@ def ask_stream(
             # only happens after the stream completes normally.
             provider_failure = classify_provider_error(e)
             if provider_failure is not None:
+                logger.warning("ask-stream failed: %s", provider_failure.code)
                 yield generate_sse_event({
                     "type": "error",
                     "code": provider_failure.code,
                     "text": provider_failure.message,
                 })
             else:
-                yield generate_sse_event({"type": "error", "text": str(e)})
+                # The exception's own text never reaches the client: a
+                # driver's or provider's message can name hosts and schema.
+                logger.warning("ask-stream failed: internal_error (%s)", type(e).__name__)
+                failure = internal_error_payload()
+                yield generate_sse_event({
+                    "type": "error",
+                    "code": failure["code"],
+                    "text": failure["message"],
+                })
 
     return StreamingResponse(
         stream(),

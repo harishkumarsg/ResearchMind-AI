@@ -217,7 +217,10 @@ class TestPaperDetails(SanitizationTestCase):
     def test_a_runtime_error_is_sanitized(self):
         raw = RAW_MESSAGES["uuid"]
 
-        with patch("app.api.paper_details.encode_query", side_effect=ValueError(raw)):
+        with patch(
+            "app.api.paper_details.resolve_indexed_papers_by_title",
+            side_effect=ValueError(raw),
+        ):
             resp = self.client.get("/paper-details", params={"paper_name": PAPER})
 
         self.assert_sanitized(resp, raw)

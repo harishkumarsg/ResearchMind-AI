@@ -32,9 +32,9 @@ from typing import Any, Dict, Optional
 # ----------------------------------------------------------------------
 AI_GENERATION = "ai_generation"  # ask-stream, research, compare-papers, summarize-paper
 INDEX_RUN = "index_run"  # index-document
-QUERY_EMBEDDING = "query_embedding"  # search, paper-details
+QUERY_EMBEDDING = "query_embedding"  # search
 UPLOAD = "upload"  # upload
-CHEAP_READ = "cheap_read"  # export-report, latest-report (burst only)
+CHEAP_READ = "cheap_read"  # export-report, latest-report, paper-details (burst only)
 
 #: Metrics actually wired into endpoints. Kept accurate rather than
 #: aspirational: this tuple is the reviewable answer to "what is really

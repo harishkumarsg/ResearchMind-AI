@@ -113,16 +113,21 @@ function PaperWorkspace({ paperName }: { paperName: string }) {
     queryKey: queryKeys.paperDetails(userId, paperName),
     queryFn: () => getPaperDetails(paperName),
     enabled: !!userId,
-    // Each load embeds the paper name with Voyage, so a throttled request
-    // must not be retried — that only spends more of the same quota.
+    // An indexed paper's details do not change while it exists, and every
+    // delete path removes or invalidates this entry itself. With React
+    // Query's defaults (staleTime 0) the page refetched on every mount
+    // and every return to the browser tab, which is how one visit made
+    // several /paper-details requests.
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    // Not retried when throttled, nor when the paper is not found or its
+    // title is ambiguous: asking again gets the same answer.
     retry: retryUnlessRateLimited,
   });
 
   // Which paper Delete removes is taken from the library list (the
-  // database rows), never from `details`: details are found by searching
-  // for this title, so when two different papers share it they can mix
-  // both papers' chunks and report either one's paper_id. Delete is
-  // offered only when the title names exactly one paper. Same key and
+  // database rows), never from `details`, which are looked up by title.
+  // Delete is offered only when the title names exactly one paper. Same key and
   // options as the sidebar's query, so this is normally a cache hit.
   const { data: libraryPapers } = useQuery({
     queryKey: queryKeys.papersDetailed(userId),

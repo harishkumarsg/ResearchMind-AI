@@ -531,7 +531,10 @@ class TestPersistenceFailureRollsBack(ChatPersistenceTestCase):
             resp = self.ask("What is attention?")
 
         self.assertEqual(resp.status_code, 200)  # SSE transport succeeded
-        self.assertIn("write failed", resp.text)
+        # A neutral error frame; the exception's own text never reaches
+        # the client.
+        self.assertIn('"code": "internal_error"', resp.text)
+        self.assertNotIn("write failed", resp.text)
         self.assertEqual(self.sessions(), [])
         self.assertEqual(self.messages(), [])
 
@@ -548,7 +551,8 @@ class TestPersistenceFailureRollsBack(ChatPersistenceTestCase):
         ):
             resp = self.ask("What is attention?")
 
-        self.assertIn("assistant write failed", resp.text)
+        self.assertIn('"code": "internal_error"', resp.text)
+        self.assertNotIn("assistant write failed", resp.text)
 
         # The user turn was committed in its own earlier transaction and
         # legitimately survives; nothing from the assistant turn does.
