@@ -24,6 +24,7 @@ import {
   getPaperEvidence,
   getPaperIntelligence,
   AuthenticationRequiredError,
+  FinalRequestError,
   PaperIntelligenceNotFoundError,
   RateLimitError,
   type IndexResult,
@@ -212,6 +213,70 @@ describe("retryUnlessRateLimited — a throttled query must never be retried", (
     expect(retryUnlessRateLimited(0, new Error("network down"))).toBe(true);
     expect(retryUnlessRateLimited(2, new Error("network down"))).toBe(true);
     expect(retryUnlessRateLimited(3, new Error("network down"))).toBe(false);
+  });
+
+  it("never retries a final refusal", () => {
+    expect(retryUnlessRateLimited(0, new FinalRequestError("Paper not found: a.pdf"))).toBe(false);
+  });
+});
+
+describe("getPaperDetails — answers that asking again cannot change are not retried", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    mockSupabaseWithSession("tok");
+  });
+
+  const jsonResponse = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status });
+
+  it("treats the backend's own 429 burst limit as throttling", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      jsonResponse({ status: "error", code: "rate_limited", message: "Slow down." }, 429),
+    );
+
+    await expect(getPaperDetails("a.pdf")).rejects.toBeInstanceOf(RateLimitError);
+  });
+
+  it("makes a missing paper a final error, with the backend's message", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      jsonResponse({ status: "error", code: "paper_not_found", message: "Paper not found: a.pdf" }),
+    );
+
+    const error = await getPaperDetails("a.pdf").catch((e) => e);
+
+    expect(error).toBeInstanceOf(FinalRequestError);
+    expect(error.message).toBe("Paper not found: a.pdf");
+    expect(retryUnlessRateLimited(0, error)).toBe(false);
+  });
+
+  it("makes an ambiguous title a final error", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      jsonResponse(
+        { status: "error", code: "ambiguous_title", message: "More than one paper has this name." },
+        409,
+      ),
+    );
+
+    const error = await getPaperDetails("a.pdf").catch((e) => e);
+
+    expect(error).toBeInstanceOf(FinalRequestError);
+    expect(error.message).toBe("More than one paper has this name.");
+  });
+
+  it("leaves a transient failure retryable", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      jsonResponse({
+        status: "error",
+        code: "provider_unavailable",
+        message: "The research service is temporarily unavailable. Please try again shortly.",
+      }),
+    );
+
+    const error = await getPaperDetails("a.pdf").catch((e) => e);
+
+    expect(error).not.toBeInstanceOf(FinalRequestError);
+    expect(error).not.toBeInstanceOf(RateLimitError);
+    expect(retryUnlessRateLimited(0, error)).toBe(true);
   });
 });
 
@@ -519,6 +584,58 @@ describe("streamAskQuestion — fetch()-based SSE, deliberately not EventSource"
 
     expect(events.map((e) => e.type)).toEqual(["status", "token", "token", "done"]);
     expect(events[3].citations[0].paper).toBe("P");
+  });
+
+  async function collect(frames: string[]) {
+    mockSupabaseWithSession("tok");
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(sseBodyStream(frames), { status: 200 }),
+    );
+    const events: any[] = [];
+    await streamAskQuestion("q", (e) => events.push(e));
+    return events;
+  }
+
+  const frame = (event: unknown) => `data: ${JSON.stringify(event)}
+
+`;
+
+  it("turns a done frame with no answer text into an error, dropping its sources", async () => {
+    // What production sent when the model spent its budget before answering:
+    // retrieved passages, no tokens, no error.
+    const events = await collect([
+      frame({ type: "status", text: "Generating answer…" }),
+      frame({ type: "done", citations: [{ paper: "P", source: "p.pdf", page: 1, cited: false }] }),
+    ]);
+
+    expect(events.map((e) => e.type)).toEqual(["status", "error"]);
+    expect(events[1]).toEqual({
+      type: "error",
+      code: "generation_incomplete",
+      text: "The answer could not be completed. Please try again.",
+    });
+  });
+
+  it("reports a stream that closes without a final frame", async () => {
+    const events = await collect([
+      frame({ type: "status", text: "Generating answer…" }),
+      frame({ type: "token", text: "Partial" }),
+    ]);
+
+    expect(events.map((e) => e.type)).toEqual(["status", "token", "error"]);
+    expect(events[2].code).toBe("stream_interrupted");
+    expect(events[2].text).toMatch(/closed before the answer finished/);
+  });
+
+  it("passes the backend's error frame through unchanged, and nothing after it", async () => {
+    const events = await collect([
+      frame({ type: "token", text: "Partial" }),
+      frame({ type: "error", code: "provider_timeout", text: "Took too long." }),
+      frame({ type: "done", citations: [] }),
+    ]);
+
+    expect(events.map((e) => e.type)).toEqual(["token", "error"]);
+    expect(events[1]).toEqual({ type: "error", code: "provider_timeout", text: "Took too long." });
   });
 
   it("throws AuthenticationRequiredError without calling fetch when there is no session", async () => {

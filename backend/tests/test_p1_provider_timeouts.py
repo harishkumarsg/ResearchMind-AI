@@ -42,6 +42,7 @@ from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedR
 from app.core import providers
 from app.core.auth import get_current_owner_id
 from app.core.providers import (
+    GENERATION_INCOMPLETE,
     PROVIDER_RATE_LIMITED,
     PROVIDER_TIMEOUT,
     PROVIDER_UNAVAILABLE,
@@ -107,6 +108,27 @@ class FakeStream:
             yield SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content=text))])
         if self._raise_after is not None:
             raise self._raise_after
+
+    def close(self):
+        self.closed = True
+
+
+def _stream_chunk(content, finish_reason=None):
+    return SimpleNamespace(choices=[SimpleNamespace(
+        delta=SimpleNamespace(content=content), finish_reason=finish_reason,
+    )])
+
+
+class RawStream:
+    """A Groq stream of prepared chunks, for finish_reason and empty-choice
+    cases FakeStream does not model. Records close()."""
+
+    def __init__(self, chunks):
+        self._chunks = list(chunks)
+        self.closed = False
+
+    def __iter__(self):
+        return iter(self._chunks)
 
     def close(self):
         self.closed = True
@@ -530,6 +552,87 @@ class TestGroqStreaming(EndpointTestCase):
         self.assertTrue(stream.closed)
         self.assertEqual(self.assistant_turns(), 0)
 
+    # --- How a stream ends without an answer ---------------------------
+    # The model is a reasoning model whose reasoning shares max_tokens with
+    # the answer. A stream that spent it all used to end with a "done"
+    # frame carrying the retrieved passages and no answer text: the Ask
+    # page showed "also retrieved" sources, no answer and no error.
+
+    def run_raw(self, chunks):
+        stream = RawStream(chunks)
+        with self.assertLogs("app.api.ask_stream", level="WARNING") as logs:
+            _, events = self.run_ask(stream=stream)
+        return events, logs.output, stream
+
+    def assert_incomplete_frame(self, events):
+        errors = [e for e in events if e.get("type") == "error"]
+        self.assertEqual(len(errors), 1, events)
+        self.assertEqual(errors[0]["code"], GENERATION_INCOMPLETE)
+        self.assertEqual(errors[0]["text"], "The answer could not be completed. Please try again.")
+        self.assertFalse(any(e.get("type") == "done" for e in events))
+        self.assertEqual(self.assistant_turns(), 0)
+
+    def test_budget_spent_before_any_answer_text_is_an_error_not_done(self):
+        events, logs, stream = self.run_raw([
+            _stream_chunk(None),  # reasoning arrives outside delta.content
+            _stream_chunk(None, finish_reason="length"),
+        ])
+
+        self.assert_incomplete_frame(events)
+        self.assertEqual(logs, ["WARNING:app.api.ask_stream:ask-stream failed: generation_incomplete"])
+        self.assertTrue(stream.closed)
+
+    def test_budget_spent_partway_through_the_answer_is_an_error(self):
+        events, _, _ = self.run_raw([
+            _stream_chunk("Partial "),
+            _stream_chunk(None, finish_reason="length"),
+        ])
+
+        self.assertEqual([e["text"] for e in events if e.get("type") == "token"], ["Partial "])
+        self.assert_incomplete_frame(events)
+
+    def test_a_stream_that_stops_with_no_answer_text_is_an_error(self):
+        events, _, _ = self.run_raw([_stream_chunk(None, finish_reason="stop")])
+
+        self.assert_incomplete_frame(events)
+
+    def test_a_chunk_without_choices_is_skipped(self):
+        stream = RawStream([
+            _stream_chunk("The answer."),
+            SimpleNamespace(choices=[]),  # e.g. a trailing usage chunk
+            _stream_chunk(None, finish_reason="stop"),
+        ])
+
+        _, events = self.run_ask(stream=stream)
+
+        self.assertEqual(events[-1]["type"], "done", events)
+        self.assertFalse(any(e.get("type") == "error" for e in events))
+        self.assertEqual(self.assistant_turns(), 1)
+
+    def test_a_provider_failure_is_logged_by_code_only(self):
+        question = "What is the research about?"
+        with self.assertLogs("app.api.ask_stream", level="WARNING") as logs:
+            _, events = self.run_ask(create_side_effect=_groq_timeout())
+
+        self.assert_provider_timeout_frame(events)
+        self.assertEqual(logs.output, ["WARNING:app.api.ask_stream:ask-stream failed: provider_timeout"])
+        self.assertNotIn(question, "".join(logs.output))
+
+    def test_an_unclassified_failure_is_sanitized_and_logged_by_type(self):
+        raw = "relation chat_messages violates policy for user researchmind_app at db.internal"
+        stream = FakeStream(chunks=["Partial "], raise_after=RuntimeError(raw))
+
+        with self.assertLogs("app.api.ask_stream", level="WARNING") as logs:
+            resp, events = self.run_ask(stream=stream)
+
+        self.assertNotIn(raw, resp.text)
+        self.assertEqual(events[-1], {
+            "type": "error",
+            "code": "internal_error",
+            "text": "Something went wrong on our side. Please try again.",
+        })
+        self.assertEqual(logs.output, ["WARNING:app.api.ask_stream:ask-stream failed: internal_error (RuntimeError)"])
+
     def test_a_normal_stream_is_unchanged_and_still_closed(self):
         stream = FakeStream(chunks=["The ", "answer."])
 
@@ -559,13 +662,27 @@ class TestVoyageQueryTimeout(EndpointTestCase):
         self.assertEqual(resp.json(), {"status": "error", "code": PROVIDER_TIMEOUT, "message": TIMEOUT_TEXT})
         self.assertEqual(voyage.embed.call_count, 1)
 
-    def test_paper_details(self):
+    def test_paper_details_makes_no_voyage_call(self):
+        """/paper-details reads by payload filter; even with Voyage timing
+        out on every call, it answers, because it never calls Voyage."""
+        self.seed_evidence_paper()
+        point = SimpleNamespace(id=1, payload=_hit(text="opening text").payload)
         ctx, voyage = self.voyage_times_out()
-        with ctx:
+        with ctx, patch("app.api.paper_details.client") as qdrant:
+            qdrant.scroll.return_value = ([point], None)
+            resp = self.client.get("/paper-details", params={"paper_name": "p.pdf"})
+
+        self.assertEqual(resp.json()["status"], "success", resp.json())
+        voyage.embed.assert_not_called()
+        qdrant.query_points.assert_not_called()
+
+    def test_paper_details_qdrant_timeout(self):
+        self.seed_evidence_paper()
+        with patch("app.api.paper_details.client") as qdrant:
+            qdrant.scroll.side_effect = ResponseHandlingException(httpx.ReadTimeout("slow", request=_REQ))
             resp = self.client.get("/paper-details", params={"paper_name": "p.pdf"})
 
         self.assertEqual(resp.json()["code"], PROVIDER_TIMEOUT)
-        self.assertEqual(voyage.embed.call_count, 1)
         assert_neutral(self, resp.json()["message"])
 
     def test_ask_stream(self):

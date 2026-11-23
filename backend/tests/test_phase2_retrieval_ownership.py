@@ -234,15 +234,18 @@ class TestPaperDetailsOwnership(RetrievalOwnershipTestCase):
         self.assertEqual(resp.status_code, 401)
 
     @patch("app.api.paper_details.client")
-    @patch("app.api.paper_details.encode_query", return_value=[0.1] * 1024)
-    def test_owner_filter_matches_authenticated_identity(self, mock_encode, mock_client):
-        mock_client.query_points.return_value = _empty_query_points_result()
+    @patch("app.api.paper_details.resolve_indexed_papers_by_title")
+    def test_owner_filter_matches_authenticated_identity(self, mock_resolve, mock_client):
+        paper_id = str(uuid.uuid4())
+        mock_resolve.return_value = [(paper_id, "Some Paper")]
+        mock_client.scroll.return_value = ([], None)
         self._authenticate_as(TEST_OWNER)
 
         self.client.get("/paper-details", params={"paper_name": "Some Paper"})
 
-        kwargs = mock_client.query_points.call_args.kwargs
-        _assert_owner_filter_present(kwargs["query_filter"], TEST_OWNER)
+        self.assertEqual(mock_resolve.call_args.args[0], TEST_OWNER)
+        kwargs = mock_client.scroll.call_args.kwargs
+        _assert_owner_filter_present(kwargs["scroll_filter"], TEST_OWNER)
 
 
 class TestAskRouteFullyRemoved(unittest.TestCase):

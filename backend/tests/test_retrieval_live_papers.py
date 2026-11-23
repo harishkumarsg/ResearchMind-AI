@@ -381,46 +381,139 @@ class TestCompareUsesOnlyLivePapers(RetrievalTestCase):
 # /paper-details
 # ---------------------------------------------------------------------------
 class TestPaperDetailsUsesOnlyLivePapers(RetrievalTestCase):
+    """/paper-details resolves the title in Postgres and reads that paper's
+    chunks by payload filter. No embedding, no vector search."""
 
-    def details(self, hits, name="Report.pdf"):
-        with patch("app.api.paper_details.encode_query", return_value=[0.1] * 4), \
-             patch("app.api.paper_details.client") as qdrant:
-            qdrant.query_points.return_value.points = hits
-            return self.client.get("/paper-details", params={"paper_name": name})
+    def details(self, name="Report.pdf", pages=None):
+        """`pages` is what successive Qdrant scroll calls return."""
+        pages = list(pages if pages is not None else [([], None)])
+        with patch("app.rag.embedder._get_client") as voyage,              patch("app.api.paper_details.client") as qdrant:
+            qdrant.scroll.side_effect = pages
+            resp = self.client.get("/paper-details", params={"paper_name": name})
+        voyage.assert_not_called()
+        qdrant.query_points.assert_not_called()
+        self.qdrant = qdrant
+        return resp
 
-    def test_a_dead_incarnation_with_the_same_title_never_answers(self):
+    @staticmethod
+    def point(paper_id, title, text, page=1, chunk_id=0, **extra):
+        payload = _hit(paper_id, title, text, page=page).payload
+        payload.update(chunk_id=chunk_id, **extra)
+        return SimpleNamespace(id=str(uuid.uuid4()), payload=payload)
+
+    def scroll_filter(self, call=0):
+        kwargs = self.qdrant.scroll.call_args_list[call].kwargs
+        return kwargs, {c.key: c.match.value for c in kwargs["scroll_filter"].must}
+
+    def test_the_title_resolves_to_the_indexed_incarnation(self):
         """The same file uploaded again after a delete is a new paper with
-        the old title. Leftover vectors of the old one rank first; the
-        answer must still be the live paper's id and text."""
-        hits = [
-            _hit(self.papers["missing"], "Report.pdf", "DEAD orphaned text"),
-            _hit(self.papers["deleting"], "Report.pdf", "DEAD being removed"),
-            _hit(self.papers["live"], "Report.pdf", "LIVE text"),
-        ]
+        the old title. Only the indexed one is read."""
+        self.seed(OWNER_A, "deleting", "Report.pdf")
+        live = self.seed(OWNER_A, "indexed", "Report.pdf")
 
-        body = self.details(hits).json()
+        body = self.details(pages=[([self.point(live, "Report.pdf", "LIVE text")], None)]).json()
 
         self.assertEqual(body["status"], "success", body)
-        self.assertEqual(body["paper_id"], self.papers["live"])
-        self.assertEqual(body["total_chunks"], 1)
+        self.assertEqual(body["paper_id"], live)
+        self.assertEqual(body["paper"], "Report.pdf")
         self.assertEqual(body["preview"], "LIVE text")
+        kwargs, must = self.scroll_filter()
+        self.assertEqual(must, {"paper_id": live, "owner_id": OWNER_A})
+        self.assertIs(kwargs["with_vectors"], False)
+
+    def test_the_response_keeps_the_shape_the_frontend_reads(self):
+        live = self.seed(OWNER_A, "indexed", "Report.pdf")
+        late = self.point(live, "Report.pdf", "second page text", page=2, abstract="The abstract.",
+                          authors="A. Author", keywords="graphs")
+        first = self.point(live, "Report.pdf", "x" * 1500, page=1, chunk_id=0, abstract="",
+                           authors="", keywords="")
+        middle = self.point(live, "Report.pdf", "first page, second chunk", page=1, chunk_id=1)
+
+        # Two scroll pages, deliberately out of reading order.
+        body = self.details(pages=[([late, middle], "next"), ([first], None)]).json()
+
+        self.assertEqual(set(body), {"status", "paper", "paper_id", "source", "authors",
+                                     "keywords", "abstract", "total_chunks", "preview"})
+        self.assertEqual(body["total_chunks"], 3)
+        self.assertEqual(body["preview"], "x" * 1000)  # page 1, chunk 0, cut to 1000
+        self.assertEqual(body["authors"], "A. Author")  # first non-empty value
+        self.assertEqual(body["abstract"], "The abstract.")
+        self.assertEqual(body["source"], "Report.pdf.pdf")
+        self.assertEqual(self.scroll_filter(1)[0]["offset"], "next")
+
+    def test_a_case_insensitive_exact_title_resolves_but_a_substring_never_does(self):
+        live = self.seed(OWNER_A, "indexed", "Report.pdf")
+        body = self.details("report.PDF", pages=[([self.point(live, "Report.pdf", "t")], None)]).json()
+        self.assertEqual(body["paper_id"], live)
+
+        body = self.details("Report").json()
+        self.assertEqual(body["code"], "paper_not_found")
+        self.qdrant.scroll.assert_not_called()
+
+    def test_a_title_naming_two_indexed_papers_is_refused(self):
+        """The legacy DELETE /paper/{name} rule: an ambiguous title is
+        never resolved by picking one of the papers."""
+        self.seed(OWNER_A, "indexed", "Twin.pdf")
+        self.seed(OWNER_A, "indexed", "Twin.pdf")
+
+        resp = self.details("Twin.pdf")
+
+        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(resp.json()["code"], "ambiguous_title")
+        self.assertEqual(resp.json()["status"], "error")
+        self.qdrant.scroll.assert_not_called()
 
     def test_a_paper_that_is_not_live_is_not_found(self):
-        for label in NOT_LIVE + ("missing", "other_owner"):
+        for label in NOT_LIVE:
             with self.subTest(paper=label):
-                body = self.details([_hit(self.papers[label], "Report.pdf", "text")]).json()
-                self.assertEqual(body, {"status": "error", "message": "Paper not found: Report.pdf"})
+                resp = self.details(f"{label.title()} paper")
+                self.assertEqual(resp.status_code, 200)
+                self.assertEqual(resp.json(), {
+                    "status": "error",
+                    "code": "paper_not_found",
+                    "message": f"Paper not found: {label.title()} paper",
+                })
+                self.qdrant.scroll.assert_not_called()
 
-    def test_a_hit_with_a_malformed_paper_id_is_not_found(self):
-        body = self.details([_hit("not-a-uuid", "Report.pdf", "text")]).json()
-        self.assertEqual(body["status"], "error")
+    def test_another_owners_paper_is_not_found(self):
+        body = self.details("Someone else's paper").json()
 
-    def test_a_database_failure_is_an_error(self):
-        with _database_down():
-            resp = self.details([_hit(self.papers["live"], "Report.pdf", "LIVE text")])
+        self.assertEqual(body["code"], "paper_not_found")
+        self.qdrant.scroll.assert_not_called()
+
+    def test_an_indexed_paper_with_no_chunks_is_not_found(self):
+        body = self.details("Live paper").json()
+
+        self.assertEqual(body["code"], "paper_not_found")
+        self.assertEqual(self.scroll_filter()[1], {"paper_id": self.papers["live"], "owner_id": OWNER_A})
+
+    def test_a_database_failure_is_an_error_logged_by_type_only(self):
+        failing = patch(
+            "app.api.paper_details.session_scope",
+            side_effect=OperationalError("SELECT", {}, Exception(DATABASE_ERROR_TEXT)),
+        )
+        with failing, self.assertLogs("app.api.paper_details", level="WARNING") as logs:
+            resp = self.details("Live paper")
 
         self.assertEqual(resp.json(), internal_error_payload())
         self.assertNotIn("db.internal.example", resp.text)
+        self.assertEqual(logs.output, [
+            "WARNING:app.api.paper_details:paper-details failed: internal_error (OperationalError)",
+        ])
+
+    def test_a_provider_failure_is_logged_by_code_only(self):
+        from qdrant_client.http.exceptions import ResponseHandlingException
+
+        failure = ResponseHandlingException(Exception("qdrant.internal.example refused"))
+        with self.assertLogs("app.api.paper_details", level="WARNING") as logs:
+            resp = self.details("Live paper", pages=[failure])
+
+        self.assertEqual(resp.json()["code"], "provider_unavailable")
+        self.assertEqual(logs.output, [
+            "WARNING:app.api.paper_details:paper-details failed: provider_unavailable",
+        ])
+        self.assertNotIn("Live paper", "".join(logs.output))
+        self.assertNotIn("qdrant.internal", "".join(logs.output) + resp.text)
 
 
 # ---------------------------------------------------------------------------

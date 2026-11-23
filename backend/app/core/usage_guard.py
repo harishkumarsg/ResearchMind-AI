@@ -74,11 +74,12 @@ precheck_ai_generation = _guard(limits_config.AI_GENERATION, charge=False)
 #: charges only once it knows a run will actually start.
 precheck_index_run = _guard(limits_config.INDEX_RUN, charge=False)
 
-#: Charges one query embedding up front. /search and /paper-details both
-#: call encode_query() as their FIRST statement, so a dependency that
-#: charges is the correct shape here: the rejection happens before the
-#: handler body runs, and therefore before any Voyage request. Exactly
-#: one charge per request — the handlers never charge again.
+#: Charges one query embedding up front. /search calls encode_query() as
+#: its FIRST statement, so a dependency that charges is the correct shape
+#: here: the rejection happens before the handler body runs, and therefore
+#: before any Voyage request. Exactly one charge per request — the handler
+#: never charges again. (/paper-details no longer embeds anything; it is a
+#: cheap read.)
 charge_query_embedding = _guard(limits_config.QUERY_EMBEDDING, charge=True)
 
 #: Checks the upload allowance without consuming it. /upload validates

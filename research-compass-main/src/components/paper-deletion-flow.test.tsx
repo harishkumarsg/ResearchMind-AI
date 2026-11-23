@@ -137,6 +137,10 @@ const reply = (status: number, body: unknown) =>
     headers: { "Content-Type": "application/json" },
   });
 
+// Verbatim from backend/app/api/paper_details.py.
+const AMBIGUOUS_DETAILS_MESSAGE =
+  "More than one paper in your library has this name, so its details cannot be shown by name.";
+
 /** What marks the page as showing a given paper's own details. */
 const abstractOf = (title: string) => `ABSTRACT-OF-${title}`;
 
@@ -168,10 +172,25 @@ async function backend(input: RequestInfo | URL, init?: RequestInit): Promise<Re
   }
 
   if (method === "GET" && url.pathname === "/paper-details") {
-    // Only an indexed paper is ever found (the retrieval guard).
+    // Only an indexed paper is ever found, and a title naming two of them
+    // is refused rather than resolved (backend/app/api/paper_details.py).
     const title = url.searchParams.get("paper_name") ?? "";
-    const row = indexed.find((candidate) => candidate.title === title);
-    if (!row) return reply(200, { status: "error", message: `Paper not found: ${title}` });
+    const matches = indexed.filter((candidate) => candidate.title === title);
+    if (matches.length > 1) {
+      return reply(409, {
+        status: "error",
+        code: "ambiguous_title",
+        message: AMBIGUOUS_DETAILS_MESSAGE,
+      });
+    }
+    const row = matches[0];
+    if (!row) {
+      return reply(200, {
+        status: "error",
+        code: "paper_not_found",
+        message: `Paper not found: ${title}`,
+      });
+    }
     return reply(200, {
       status: "success",
       paper: row.title,
@@ -405,7 +424,12 @@ describe("deleting from the paper page", () => {
   it("refuses a title shared by two papers, and the sidebar tells the two apart", async () => {
     serve(COPY_ONE, COPY_TWO, B);
     renderApp(paperPath(COPY_ONE));
-    await showing(COPY_ONE);
+    // Neither copy's details are shown under the shared title.
+    expect(await screen.findByText(AMBIGUOUS_DETAILS_MESSAGE)).toBeInTheDocument();
+    expect(screen.queryByText(abstractOf(COPY_ONE.title))).not.toBeInTheDocument();
+    // A final answer: asked once, never retried.
+    await settle();
+    expect(detailsRequestsFor(COPY_ONE.title)).toHaveLength(1);
 
     expect(
       await screen.findByText(/more than one paper in your library is named/i),
@@ -665,9 +689,9 @@ describe("deleting the open paper from the sidebar", () => {
   it("stays on a shared title when one copy is deleted, and shows the copy that remains", async () => {
     serve(COPY_ONE, COPY_TWO, B);
     renderApp(paperPath(COPY_ONE));
-    await showing(COPY_ONE);
-    // The page shows whichever copy the title search found: here, copy one.
-    await waitFor(() => expect(viewerSrc()).toBe(`blob:${COPY_ONE.paper_id}#page=1`));
+    // While the title names two papers, neither is shown.
+    expect(await screen.findByText(AMBIGUOUS_DETAILS_MESSAGE)).toBeInTheDocument();
+    expect(screen.queryByTitle("Paper document")).not.toBeInTheDocument();
 
     fireEvent.click(await sidebarDeleteButton("c1c1c1c1"));
 
@@ -676,8 +700,8 @@ describe("deleting the open paper from the sidebar", () => {
     await settle();
     expect(nav.navigate).not.toHaveBeenCalled();
     expect(nav.state.path).toBe(paperPath(COPY_ONE));
-    // …but what it showed was the deleted copy: it is fetched again, and
-    // the copy that remains is shown instead.
+    // …and it is fetched again: the title now names one paper, the copy
+    // that remains, which is shown.
     await waitFor(() => expect(viewerSrc()).toBe(`blob:${COPY_TWO.paper_id}#page=1`));
     expect(deletes().map((request) => request.path)).toEqual([`/papers/${COPY_ONE.paper_id}`]);
   });
@@ -826,5 +850,42 @@ describe("deletePaper and error bodies that are not the backend's JSON", () => {
     expect(await screen.findByText(FALLBACK)).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(JSON_PARSE_ERROR);
     expect(nav.navigate).not.toHaveBeenCalled();
+  });
+});
+
+// ----------------------------------------------------------------------
+// Paper details are read once per visit
+// ----------------------------------------------------------------------
+describe("paper details are not fetched again while the paper is unchanged", () => {
+  it("one request: returning to the tab and coming back to the page do not ask again", async () => {
+    serve(A, B);
+    renderApp(paperPath(A));
+    await showing(A);
+    expect(detailsRequestsFor(A.title)).toHaveLength(1);
+
+    // The browser tab is left and returned to (React Query listens for
+    // visibilitychange on window).
+    act(() => {
+      window.dispatchEvent(new Event("visibilitychange"));
+    });
+    await settle();
+
+    // The reader goes elsewhere and comes back to the same paper.
+    visit("/dashboard");
+    await settle();
+    visit(paperPath(A));
+    await showing(A);
+    await settle();
+
+    expect(detailsRequestsFor(A.title)).toHaveLength(1);
+  });
+
+  it("a paper that is not found is asked for once, not retried", async () => {
+    serve(B);
+    renderApp(paperPath(A));
+
+    expect(await screen.findByText(`Paper not found: ${A.title}`)).toBeInTheDocument();
+    await settle();
+    expect(detailsRequestsFor(A.title)).toHaveLength(1);
   });
 });
