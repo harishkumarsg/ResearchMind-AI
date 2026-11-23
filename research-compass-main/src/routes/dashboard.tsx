@@ -207,7 +207,7 @@ function SectionHeader({
         to={link}
         className="text-xs text-muted-foreground hover:text-foreground"
       >
-        View all â†’
+        View all →
       </Link>
     </div>
   );
