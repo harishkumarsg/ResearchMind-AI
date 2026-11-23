@@ -283,13 +283,33 @@ class TestA6RefusalSuppressesSources(AskStreamEvidenceTestCase):
         self.assertEqual(citations[0]["page"], 6)
 
 
+#: Library questions the deterministic matcher does not recognise, so they
+#: still reach the model and its LIBRARY_SCOPE_RESPONSE rule.
+FALLBACK_QUESTIONS = (
+    "Tell me the number of papers in my library.",
+    "Which titles are in my library?",
+)
+
+
 class TestLibraryScopeQuestions(AskStreamEvidenceTestCase):
     """Questions about the library itself (how many papers, which ones).
 
     The model sees only the passages retrieved for one question, so it
     cannot count or list the library. The prompt tells it to say so and
     point to the sidebar, and that reply carries no Sources.
+
+    The common phrasings never reach the model any more: /ask-stream
+    answers them from Postgres (tests/test_library_questions.py). The
+    prompt rule remains the fallback for phrasings the matcher leaves
+    alone, so these tests use such phrasings.
     """
+
+    def test_fallback_phrasings_are_left_to_the_model(self):
+        from app.services.library_questions import is_library_question
+
+        for question in FALLBACK_QUESTIONS:
+            with self.subTest(question=question):
+                self.assertFalse(is_library_question(question))
 
     def test_system_prompt_carries_the_library_scope_rule_and_reply(self):
         lowered = SYSTEM_PROMPT.lower()
@@ -304,7 +324,7 @@ class TestLibraryScopeQuestions(AskStreamEvidenceTestCase):
 
     def test_library_scope_rule_is_sent_in_the_system_message(self):
         hits = [_hit("id-1", 3, 0, "A passage from one paper.")]
-        self._run(hits, answer=LIBRARY_SCOPE_RESPONSE, question="how many papers do I have?")
+        self._run(hits, answer=LIBRARY_SCOPE_RESPONSE, question=FALLBACK_QUESTIONS[0])
         system = self.sent_messages[0]
         self.assertEqual(system["role"], "system")
         self.assertIn(LIBRARY_SCOPE_RESPONSE, system["content"])
@@ -315,7 +335,7 @@ class TestLibraryScopeQuestions(AskStreamEvidenceTestCase):
             _hit("id-2", 8, 0, "A passage from another paper."),
         ]
         supplied, citations, _ = self._run(
-            hits, answer=LIBRARY_SCOPE_RESPONSE, question="which papers do I have?"
+            hits, answer=LIBRARY_SCOPE_RESPONSE, question=FALLBACK_QUESTIONS[1]
         )
 
         self.assertEqual(len(supplied), 2)
