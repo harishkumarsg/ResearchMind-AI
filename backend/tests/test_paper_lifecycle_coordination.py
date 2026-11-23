@@ -1184,7 +1184,8 @@ class TestUploadIntegrityErrors(LifecycleTestCase):
                 content = self.content(f"fault-{name}")
                 self.insert_raises(original)
 
-                resp = self.post(content)
+                with self.assertLogs("app.api.upload", level="WARNING"):
+                    resp = self.post(content)
 
                 self.assertEqual(resp.status_code, 500, resp.text)
                 self.assertEqual(resp.json(), {"detail": UPLOAD_NOT_SAVED_DETAIL})
@@ -1193,6 +1194,61 @@ class TestUploadIntegrityErrors(LifecycleTestCase):
                     self.assertNotIn(word, resp.text)
                 self.assertIsNone(self.paper_with(content))
                 self.assertEqual(self.storage.writes, [])
+
+    def test_an_unrelated_integrity_error_is_logged_by_driver_type_only(self):
+        """One warning, a fixed operation and the driver exception's type:
+        never the message, the SQL or the values."""
+        for name, original, expected in (
+            ("postgres foreign key", PostgresError(POSTGRES_FOREIGN_KEY_TEXT, "papers_owner_id_fkey"),
+             "database upload row insert failed: type=PostgresError"),
+            ("postgres not null", PostgresError(POSTGRES_NOT_NULL_TEXT, None),
+             "database upload row insert failed: type=PostgresError"),
+            ("sqlite not null", sqlite3.IntegrityError("NOT NULL constraint failed: papers.title"),
+             "database upload row insert failed: type=IntegrityError"),
+        ):
+            with self.subTest(error=name):
+                self.insert_raises(original)
+
+                with self.assertLogs(level="DEBUG") as captured:
+                    resp = self.post(self.content(f"logged-{name}"))
+
+                self.assertEqual(resp.status_code, 500, resp.text)
+                self.assertEqual(
+                    [r.getMessage() for r in captured.records if r.name == "app.api.upload"],
+                    [expected],
+                )
+                logged = "\n".join(
+                    f"{r.getMessage()} {r.args!r} {r.exc_text or ''}" for r in captured.records
+                )
+                for word in (str(original), "violates", "papers_owner_id_fkey", "users",
+                             "not-null", "NOT NULL", "papers.title", "INSERT INTO", OWNER_A):
+                    self.assertNotIn(word, logged)
+                for record in captured.records:
+                    # A traceback would print the message and the SQL.
+                    self.assertIsNone(record.exc_info, record.getMessage())
+
+    def test_the_duplicate_race_is_not_logged_as_a_fault(self):
+        import logging
+
+        content = self.content("pg-duplicate-quiet")
+        content_hash = hashlib.sha256(content).hexdigest()
+        self.insert_raises(
+            PostgresError(POSTGRES_UNIQUE_TEXT, CONTENT_UNIQUE_CONSTRAINT),
+            before_raising=lambda: self.seed(status="uploaded", content_hash=content_hash, vectors=False),
+        )
+
+        with patch.object(logging.getLogger("app.api.upload"), "warning") as warning:
+            resp = self.post(content)
+
+        self.assertEqual(resp.status_code, 200, resp.text)
+        warning.assert_not_called()
+
+    def test_the_logged_type_is_the_drivers_for_a_wrapped_error(self):
+        from app.db.errors import database_failure_type
+
+        wrapped = self.integrity_error(PostgresError(POSTGRES_FOREIGN_KEY_TEXT, "papers_owner_id_fkey"))
+        self.assertEqual(database_failure_type(wrapped), "PostgresError")
+        self.assertEqual(database_failure_type(RuntimeError("anything")), "RuntimeError")
 
     def test_the_files_unique_conflict_answers_as_a_duplicate(self):
         """Postgres reports the conflict by constraint name. The other

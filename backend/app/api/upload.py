@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import AuthenticatedIdentity, get_current_identity
 from app.core.usage_guard import charge_upload_unit, precheck_upload
+from app.db.errors import log_database_failure
 from app.db.models import Paper
 from app.db.session import get_db_session
 from app.services import paper_lifecycle
@@ -21,8 +22,11 @@ from app.services.storage import (
 
 router = APIRouter()
 
-#: Storage failures are logged through storage.log_storage_failure only:
-#: exception type and status codes, never the message, URL or key.
+#: Failures are logged through helpers only, never by a direct logger call:
+#: Storage failures through storage.log_storage_failure (exception type and
+#: status codes, never the message, URL or key), a failed row insert
+#: through db.errors.log_database_failure (exception type only, never the
+#: message, SQL or values).
 logger = logging.getLogger(__name__)
 
 #: Authored here, never interpolated from an exception. status_detail is
@@ -179,9 +183,10 @@ async def upload_pdf_endpoint(
             db.rollback()
             if not _is_duplicate_file(error):
                 # A foreign key, NOT NULL or other constraint — a fault,
-                # not a race, so it is not reported as one. Not logged
-                # here: this module logs only Storage failures, through
-                # storage.log_storage_failure.
+                # not a race, so it is not reported as one. Logged by the
+                # driver exception's type only: its message, the SQL and
+                # the values never reach the log or the client.
+                log_database_failure(logger, "upload row insert", error)
                 raise HTTPException(status_code=500, detail=UPLOAD_NOT_SAVED_DETAIL)
             # The same file, uploaded twice at once: the other request
             # created its row first. Answer as for any duplicate, by what
