@@ -35,6 +35,8 @@ BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
+import tests  # noqa: E402,F401 — hermetic bootstrap; must precede every app import
+
 import app.db.session as session_module
 from app.db.models import Paper, PaperIntelligenceRow
 from app.db.session import JWT_CLAIMS_SETTING, _bind_jwt_claims, session_scope

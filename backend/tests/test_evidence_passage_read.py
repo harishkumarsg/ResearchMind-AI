@@ -34,6 +34,8 @@ if BACKEND_DIR not in sys.path:
 
 from sqlalchemy import event
 
+import tests  # noqa: E402,F401 — hermetic bootstrap; must precede every app import
+
 import app.api.paper_evidence as evidence_api
 import app.api.paper_intelligence as intelligence_api
 import app.db.session as session_module
@@ -46,7 +48,6 @@ from app.services.paper_relationship_evidence import EVIDENCE_CONTEXT_CHARS
 from tests.sqlite_harness import attach_sqlite_db
 
 MODULE_PATH = os.path.join(BACKEND_DIR, "app", "api", "paper_evidence.py")
-INDEXER_PATH = os.path.join(BACKEND_DIR, "app", "api", "index_document.py")
 
 OWNER_A = "dddddddd-dddd-dddd-dddd-dddddddddddd"
 OWNER_B = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"
@@ -1100,6 +1101,10 @@ class TestReindexSignal(EvidenceReadTestCase):
             session.commit()
             session.refresh(paper)
             self.assertGreater(paper.updated_at, before)
+            # The run ends with the paper indexed again, as a real one does:
+            # evidence is served only for an indexed paper (resolve_paper).
+            paper.status = "indexed"
+            session.commit()
 
         self.assertIs(self.flag(), True)
 
@@ -1126,26 +1131,49 @@ class TestReindexSignal(EvidenceReadTestCase):
     def test_the_indexer_still_updates_the_paper_row_on_every_run(self):
         """Pins the other half of the assumption. If the indexer ever
         stopped touching the row, `updated_at` would stop moving and the
-        flag would silently read False after a re-index."""
-        with open(INDEXER_PATH, "r", encoding="utf-8") as handle:
-            tree = ast.parse(handle.read())
+        flag would silently read False after a re-index.
 
-        assigned = {
-            node.value.value
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Assign)
-            and isinstance(node.value, ast.Constant)
-            and any(
-                isinstance(t, ast.Attribute)
-                and t.attr == "status"
-                and isinstance(t.value, ast.Name)
-                and t.value.id == "paper"
-                for t in node.targets
-            )
-        }
+        Exercised through a real /index-document run, with only the PDF,
+        embedding and Qdrant work stubbed out. The indexer changes the
+        row's status through app/services/paper_lifecycle.py's claims —
+        into 'indexing', then out to 'indexed' — not by assigning
+        `paper.status`, so the run itself is what has to be observed.
+        """
+        self.analysed_and_indexed()
+        self.assertIs(self.flag(), False)
+        with self.factory() as session:
+            session.get(Paper, uuid.UUID(PAPER_A)).status = "uploaded"
+            session.commit()
+        # Back before the analysis: from here only the run can move it.
+        # (While 'uploaded' the paper is not served, so the flag is read
+        # again only once the run has indexed it.)
+        self.set_paper_updated_at(INDEXED_AT)
 
-        self.assertIn("indexing", assigned)
-        self.assertIn("indexed", assigned)
+        during = {}
+
+        def index_one_paper(paper, before_provider_work=None, before_vector_writes=None):
+            with self.factory() as session:
+                row = session.get(Paper, uuid.UUID(PAPER_A))
+                during["status"], during["updated_at"] = row.status, row.updated_at
+            if before_vector_writes is not None:
+                before_vector_writes([])
+            return 1
+
+        with patch("app.api.index_document.index_one_paper", side_effect=index_one_paper):
+            resp = self.client.post("/index-document")
+
+        self.assertEqual(resp.json()["papers_indexed"], 1, resp.text)
+        with self.factory() as session:
+            row = session.get(Paper, uuid.UUID(PAPER_A))
+            final_status, final_updated_at = row.status, row.updated_at
+
+        # Claimed into 'indexing' with a fresh stamp, then 'indexed' with a
+        # later one.
+        self.assertEqual(during["status"], "indexing")
+        self.assertEqual(final_status, "indexed")
+        self.assertGreater(evidence_api._as_utc(during["updated_at"]), INDEXED_AT)
+        self.assertGreater(final_updated_at, during["updated_at"])
+        self.assertIs(self.flag(), True)
 
 
 class TestReindexedSince(unittest.TestCase):

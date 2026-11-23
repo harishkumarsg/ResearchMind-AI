@@ -31,6 +31,8 @@ BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
+import tests  # noqa: E402,F401 — hermetic bootstrap; must precede every app import
+
 from dotenv import load_dotenv
 
 load_dotenv(os.path.join(BACKEND_DIR, ".env"))
@@ -58,6 +60,21 @@ from tests.sqlite_harness import attach_sqlite_db
 
 USER_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 PAPER_ID = "11111111-1111-4111-8111-111111111111"
+
+
+def _seed_indexed_paper(factory):
+    """Retrieval uses only hits whose paper is one of the owner's indexed
+    papers (app/services/retrieval_guard.py); every _hit() here names this
+    one, so it is USER_A's and indexed."""
+    from app.db.models import Paper
+
+    with factory() as db:
+        db.add(Paper(
+            id=uuid.UUID(PAPER_ID), owner_id=uuid.UUID(USER_A), title="p.pdf",
+            content_hash="b" * 64, storage_path=f"{USER_A}/{PAPER_ID}/original.pdf",
+            file_size_bytes=1024, status="indexed",
+        ))
+        db.commit()
 
 INCOMPLETE_TEXT = "The answer could not be completed. Please try again."
 
@@ -332,6 +349,7 @@ class EndpointTestCase(unittest.TestCase):
         self.addCleanup(self.app.dependency_overrides.clear)
         self.client = TestClient(app, raise_server_exceptions=False)
         self.factory = attach_sqlite_db(self)
+        _seed_indexed_paper(self.factory)
 
     def tearDown(self):
         module_store.clear(USER_A)

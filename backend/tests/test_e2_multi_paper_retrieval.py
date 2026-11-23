@@ -26,6 +26,8 @@ BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
+import tests  # noqa: E402,F401 — hermetic bootstrap; must precede every app import
+
 from dotenv import load_dotenv
 
 load_dotenv(os.path.join(BACKEND_DIR, ".env"))
@@ -91,6 +93,10 @@ class MultiPaperTestCase(unittest.TestCase):
         self.app.dependency_overrides[get_current_owner_id] = lambda: USER_A
         self.client = TestClient(app, raise_server_exceptions=False)
         self.factory = attach_sqlite_db(self)
+        # Retrieval uses only hits whose paper is one of the owner's indexed
+        # papers (app/services/retrieval_guard.py): both papers the hits
+        # below come from are USER_A's.
+        self.seed_paper_rows(PAPER_A_ID, PAPER_B_ID)
 
     def tearDown(self):
         self.app.dependency_overrides.clear()
@@ -98,11 +104,14 @@ class MultiPaperTestCase(unittest.TestCase):
 
     def seed_paper_rows(self, *paper_ids, owner=USER_A):
         """chat_store verifies ownership before writing current_paper_id, so
-        a session pointer only sticks for a paper this owner really has."""
+        a session pointer only sticks for a paper this owner really has.
+        A paper already seeded is left as it is."""
         from app.db.models import Paper
 
         with self.factory() as db:
             for index, paper_id in enumerate(paper_ids):
+                if db.get(Paper, uuid.UUID(paper_id)) is not None:
+                    continue
                 db.add(
                     Paper(
                         id=uuid.UUID(paper_id),

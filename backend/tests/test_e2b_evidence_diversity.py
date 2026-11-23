@@ -30,6 +30,8 @@ BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
+import tests  # noqa: E402,F401 — hermetic bootstrap; must precede every app import
+
 from dotenv import load_dotenv
 
 load_dotenv(os.path.join(BACKEND_DIR, ".env"))
@@ -340,16 +342,23 @@ class EndpointTestCase(unittest.TestCase):
         self.app.dependency_overrides[get_current_owner_id] = lambda: USER_A
         self.client = TestClient(app, raise_server_exceptions=False)
         self.factory = attach_sqlite_db(self)
+        # Retrieval uses only hits whose paper is one of the owner's indexed
+        # papers (app/services/retrieval_guard.py): every paper the hits
+        # below come from is USER_A's.
+        self.seed_paper_rows(ETASR_ID, EIAD_ID, THIRD_ID)
 
     def tearDown(self):
         self.app.dependency_overrides.clear()
         module_store.clear(USER_A)
 
     def seed_paper_rows(self, *paper_ids):
+        """A paper already seeded is left as it is."""
         from app.db.models import Paper
 
         with self.factory() as db:
             for index, paper_id in enumerate(paper_ids):
+                if db.get(Paper, uuid.UUID(paper_id)) is not None:
+                    continue
                 db.add(
                     Paper(
                         id=uuid.UUID(paper_id),

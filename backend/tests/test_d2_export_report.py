@@ -24,6 +24,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+import tests  # noqa: E402,F401 — hermetic bootstrap; must precede every app import
+
 import app.api.export_report as export_module
 from app.core.auth import get_current_owner_id
 from app.db.models import Base, Report

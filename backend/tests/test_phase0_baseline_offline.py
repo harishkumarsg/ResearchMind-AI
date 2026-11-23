@@ -19,6 +19,8 @@ BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
+import tests  # noqa: E402,F401 — hermetic bootstrap; must precede every app import
+
 from app.services.pdf_loader import extract_pdf_pages
 from app.services.text_cleaner import clean_text
 from app.rag.chunker import create_chunks

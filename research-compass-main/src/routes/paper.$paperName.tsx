@@ -19,7 +19,13 @@ import { PaperAskPanel } from "@/components/paper-ask-panel";
 import { PaperIntelligencePanel } from "@/components/paper-intelligence-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { getPaperDetails, summarizePaper, deletePaper, retryUnlessRateLimited } from "@/lib/api";
+import {
+  getPaperDetails,
+  getPapersDetailed,
+  summarizePaper,
+  deletePaper,
+  retryUnlessRateLimited,
+} from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { queryKeys } from "@/lib/query-keys";
 import { useRequireAuth } from "@/lib/require-auth";
@@ -112,6 +118,22 @@ function PaperWorkspace({ paperName }: { paperName: string }) {
     retry: retryUnlessRateLimited,
   });
 
+  // Which paper Delete removes is taken from the library list (the
+  // database rows), never from `details`: details are found by searching
+  // for this title, so when two different papers share it they can mix
+  // both papers' chunks and report either one's paper_id. Delete is
+  // offered only when the title names exactly one paper. Same key and
+  // options as the sidebar's query, so this is normally a cache hit.
+  const { data: libraryPapers } = useQuery({
+    queryKey: queryKeys.papersDetailed(userId),
+    queryFn: getPapersDetailed,
+    staleTime: 30_000,
+    enabled: !!userId,
+  });
+  const papersWithThisTitle = (libraryPapers ?? []).filter((p) => p.title === paperName);
+  const deleteTargetId = papersWithThisTitle.length === 1 ? papersWithThisTitle[0].paper_id : null;
+  const titleIsShared = papersWithThisTitle.length > 1;
+
   const handleSummarize = async () => {
     setSummarizing(true);
     setSummaryError("");
@@ -129,6 +151,7 @@ function PaperWorkspace({ paperName }: { paperName: string }) {
   };
 
   const handleDelete = async () => {
+    if (!deleteTargetId) return;
     if (
       !confirm(
         `Delete "${paperName.replace(/_/g, " ")}"?\n\nThis will permanently remove the PDF and all indexed vectors. This cannot be undone.`
@@ -137,15 +160,27 @@ function PaperWorkspace({ paperName }: { paperName: string }) {
       return;
     setDeleteError("");
     try {
-      await deletePaper(paperName);
+      await deletePaper(deleteTargetId);
       qc.invalidateQueries({ queryKey: queryKeys.papers(userId) });
+      // The id above came from this list; refresh it so a deleted paper
+      // can never be offered again.
+      qc.invalidateQueries({ queryKey: queryKeys.papersDetailed(userId) });
       qc.invalidateQueries({ queryKey: queryKeys.stats(userId) });
       // Search has its own namespace now, so invalidate it explicitly —
       // the ["papers"] prefix no longer sweeps it up.
       qc.invalidateQueries({ queryKey: queryKeys.searchAll() });
+      // The paper is gone, so nothing cached about it may be shown again:
+      // Back, or any link to this title, would otherwise render the deleted
+      // paper from the cache — and keep rendering it beside the "not found"
+      // error, since a failed refetch keeps the previous data. Exact: no
+      // other paper's details, and no other user's, are touched.
+      qc.removeQueries({ queryKey: queryKeys.paperDetails(userId, paperName), exact: true });
       navigate({ to: "/dashboard" });
     } catch (err: unknown) {
       setDeleteError(err instanceof Error ? err.message : "Delete failed.");
+      // Its status is read again: a removal that failed partway leaves it
+      // "deleting" on the server, and the sidebar must not still show it ready.
+      qc.invalidateQueries({ queryKey: queryKeys.papersDetailed(userId) });
     }
   };
 
@@ -155,6 +190,7 @@ function PaperWorkspace({ paperName }: { paperName: string }) {
     <AppShell
       title={displayName}
       subtitle="Paper details"
+      currentPaper={paperName}
       actions={
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" asChild>
@@ -163,13 +199,21 @@ function PaperWorkspace({ paperName }: { paperName: string }) {
               Compare
             </Link>
           </Button>
-          <Button variant="destructive" size="sm" onClick={handleDelete}>
+          <Button variant="destructive" size="sm" onClick={handleDelete} disabled={!deleteTargetId}>
             <Trash2 className="mr-1.5 h-3.5 w-3.5" />
             Delete
           </Button>
         </div>
       }
     >
+      {titleIsShared && (
+        <div className="mb-6 flex items-center gap-3 rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          More than one paper in your library is named “{displayName}”, so this page can’t tell
+          which one to delete. Use the delete button next to the one you mean in the library list.
+        </div>
+      )}
+
       {deleteError && (
         <div className="mb-6 flex items-center gap-3 rounded-xl border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           <AlertCircle className="h-4 w-4 shrink-0" />

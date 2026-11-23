@@ -28,7 +28,15 @@ them immediately, once:
 Do not remove the skip calls until that infrastructure exists and you
 have explicitly approved Phase 2.
 """
+import os
+import sys
 import unittest
+
+BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if BACKEND_DIR not in sys.path:
+    sys.path.insert(0, BACKEND_DIR)
+
+import tests  # noqa: E402,F401 — hermetic bootstrap; must precede every app import
 
 PHASE0_SKIP_REASON = (
     "Deferred to Phase 2 — requires a provisioned Qdrant cluster, the "

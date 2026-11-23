@@ -8,6 +8,8 @@ import threading
 import unittest
 from unittest.mock import patch
 
+import tests  # noqa: E402,F401 — hermetic bootstrap; must precede every app import
+
 from app.core.limits import RateLimited
 from app.core.rate_limit import SlidingWindowLimiter, bucket_key, enforce_burst, get_limiter
 

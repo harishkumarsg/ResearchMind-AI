@@ -12,6 +12,7 @@ from app.core.usage_guard import charge_ai_unit, precheck_ai_generation
 from app.rag.embedder import encode_query
 from app.rag.vector_store import COLLECTION_NAME, client
 from app.rag.reranker import rerank_results
+from app.services.retrieval_guard import LIVE_STATUS, keep_live_hits
 
 from app.agents.qa_agent import generate_answer
 
@@ -58,7 +59,12 @@ def resolve_paper_in_database(owner_id, paper_name):
     matching is deliberately NOT used — "report.pdf" must never select
     "final report.pdf".
 
-    Returns ("", "") when this owner has no such paper.
+    Only an indexed paper is resolved. A title can name several rows —
+    the same file uploaded again after a delete is a new paper with the
+    old title — and one still uploading, indexing, failed or being
+    removed must never be the one summarised.
+
+    Returns ("", "") when this owner has no such indexed paper.
     """
     owner_uuid = uuid.UUID(owner_id)
 
@@ -68,6 +74,7 @@ def resolve_paper_in_database(owner_id, paper_name):
             db.query(Paper.id, Paper.title)
             .filter(
                 Paper.owner_id == owner_uuid,
+                Paper.status == LIVE_STATUS,
                 Paper.title == paper_name
             )
             .first()
@@ -79,6 +86,7 @@ def resolve_paper_in_database(owner_id, paper_name):
                 db.query(Paper.id, Paper.title)
                 .filter(
                     Paper.owner_id == owner_uuid,
+                    Paper.status == LIVE_STATUS,
                     func.lower(Paper.title) == paper_name.lower()
                 )
                 .first()
@@ -99,6 +107,11 @@ def resolve_paper_in_index(owner_id, paper_name, query_vector):
     differently titled paper, because a differently titled paper cannot
     pass the filter at all.
 
+    Reached only when no indexed row has this title, so what it finds is
+    usually a deleted or unfinished paper's leftover vectors. Those are
+    rejected: a hit counts only if its paper is one of this owner's
+    indexed papers (app/services/retrieval_guard.py).
+
     Returns ("", "") when this owner has no such paper.
     """
     points = client.query_points(
@@ -118,6 +131,8 @@ def resolve_paper_in_index(owner_id, paper_name, query_vector):
         ),
         limit=1
     ).points
+
+    points = keep_live_hits(owner_id, points)
 
     for point in points:
 
@@ -178,7 +193,9 @@ def fetch_paper_chunks(owner_id, paper_id, paper_title, query_vector):
 
     The filter always pins owner_id, and pins paper_id when the payload
     carries one, so no other owner's and no other paper's chunk can enter
-    the result.
+    the result. And only chunks of one of this owner's indexed papers are
+    kept (app/services/retrieval_guard.py), checked once for the whole
+    batch before reading order is restored.
     """
     must = [
         FieldCondition(
@@ -213,6 +230,8 @@ def fetch_paper_chunks(owner_id, paper_id, paper_title, query_vector):
         query_filter=Filter(must=must),
         limit=PAPER_FETCH_LIMIT
     ).points
+
+    points = keep_live_hits(owner_id, points)
 
     payloads = [
         point.payload

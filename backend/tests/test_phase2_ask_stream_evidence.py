@@ -28,6 +28,8 @@ BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
+import tests  # noqa: E402,F401 — hermetic bootstrap; must precede every app import
+
 from dotenv import load_dotenv
 load_dotenv(os.path.join(BACKEND_DIR, ".env"))
 
@@ -39,6 +41,9 @@ from app.core.auth import get_current_owner_id
 from app.memory import _store as module_store
 
 USER_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+# Retrieval uses only hits whose paper is one of the owner's indexed papers
+# (app/services/retrieval_guard.py), so setUp gives USER_A this one.
+PAPER_ID = "a1a1a1a1-0000-4000-8000-000000000001"
 
 
 def _hit(point_id, page, chunk_id, text, paper="Paper A"):
@@ -48,7 +53,7 @@ def _hit(point_id, page, chunk_id, text, paper="Paper A"):
     h.payload = {
         "paper": paper,
         "source": f"{paper}.pdf",
-        "paper_id": "paper-uuid-1",
+        "paper_id": PAPER_ID,
         "page": page,
         "chunk_id": chunk_id,
         "text": text,
@@ -85,7 +90,16 @@ class AskStreamEvidenceTestCase(unittest.TestCase):
         # ask_stream.py reads history/topic from the database and writes
         # a row per turn. A private in-memory one keeps this suite
         # offline without stubbing the behaviour it exercises.
-        attach_sqlite_db(self)
+        factory = attach_sqlite_db(self)
+        from app.db.models import Paper
+
+        with factory() as db:
+            db.add(Paper(
+                id=uuid.UUID(PAPER_ID), owner_id=uuid.UUID(USER_A), title="Paper A",
+                content_hash="a" * 64, storage_path=f"{USER_A}/{PAPER_ID}/original.pdf",
+                file_size_bytes=1024, status="indexed",
+            ))
+            db.commit()
 
     def tearDown(self):
         self.app.dependency_overrides.clear()

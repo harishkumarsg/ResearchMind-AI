@@ -19,6 +19,8 @@ BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
+import tests  # noqa: E402,F401 — hermetic bootstrap; must precede every app import
+
 from dotenv import load_dotenv
 load_dotenv(os.path.join(BACKEND_DIR, ".env"))
 
@@ -27,7 +29,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.api.upload import compute_paper_id
 from app.core.auth import AuthenticatedIdentity, get_current_identity, get_current_owner_id
 from app.db.models import Base, Paper
 from app.db.session import get_db_session
@@ -45,11 +46,16 @@ MINIMAL_VALID_PDF = (
 MINIMAL_VALID_PDF_HASH = hashlib.sha256(MINIMAL_VALID_PDF).hexdigest()
 
 
+#: How /upload derived paper ids before U3.3: uuid5 of owner and content.
+#: Rows created then keep those ids, so the seeded rows below use one — and
+#: the endpoint must still find them, now by (owner_id, content_hash).
+LEGACY_PAPER_ID_NAMESPACE = uuid.UUID("6ba7b813-9dad-11d1-80b4-00c04fd430c8")
+
+
 def _expected_paper_id(owner_id: str) -> uuid.UUID:
-    """The exact paper_id the /upload endpoint will compute for
-    MINIMAL_VALID_PDF + this owner — a seeded row must use this ID to
-    actually be found by the endpoint's existing-row lookup."""
-    return compute_paper_id(owner_id, MINIMAL_VALID_PDF_HASH)
+    """The id a row for MINIMAL_VALID_PDF + this owner was given before
+    U3.3. A seeded row with it must be found by its content, and reused."""
+    return uuid.uuid5(LEGACY_PAPER_ID_NAMESPACE, f"{owner_id}:{MINIMAL_VALID_PDF_HASH}")
 
 
 def _new_sqlite_engine_and_session_factory():
@@ -626,7 +632,8 @@ class TestDeleteOwnership(OwnershipTestBase):
         self.as_user(USER_A)
         resp = self.client.delete("/paper/Flaky_Delete")
 
-        self.assertEqual(resp.status_code, 500)
+        # The route's sanitized failure, rendered inside CORS (U3.1).
+        self.assertEqual(resp.status_code, 502)
 
         session = self.SessionLocal()
         try:
@@ -671,13 +678,16 @@ class TestIndexingOwnership(OwnershipTestBase):
         self._seed_paper(USER_A, "Good_Paper")
         self._seed_paper(USER_A, "Bad_Paper")
 
-        # index_one_paper now takes an optional before_provider_work hook
-        # (E1 per-paper metering), so this double must accept it too.
-        def side_effect(paper, before_provider_work=None):
+        # index_one_paper now takes optional before_provider_work (E1
+        # per-paper metering) and before_vector_writes (the indexer's claim
+        # check) hooks, so this double must accept them too.
+        def side_effect(paper, before_provider_work=None, before_vector_writes=None):
             if paper.title == "Bad_Paper":
                 raise ValueError("Voyage API failure")
             if before_provider_work is not None:
                 before_provider_work()
+            if before_vector_writes is not None:
+                before_vector_writes([])
             return 3
 
         with patch("app.api.index_document.index_one_paper", side_effect=side_effect):

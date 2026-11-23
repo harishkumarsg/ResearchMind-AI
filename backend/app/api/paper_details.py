@@ -6,6 +6,7 @@ from app.core.usage_guard import charge_query_embedding
 from app.core.providers import classify_provider_error, internal_error_payload
 from app.rag.embedder import encode_query
 from app.rag.vector_store import COLLECTION_NAME, client
+from app.services.retrieval_guard import keep_live_hits
 
 router = APIRouter()
 
@@ -35,6 +36,12 @@ def paper_details(
             query_filter=owner_filter,
             limit=100
         ).points
+
+        # Only hits whose paper is one of this owner's indexed papers
+        # (app/services/retrieval_guard.py), checked before title matching:
+        # a deleted incarnation's leftover vectors share its title, and
+        # must never answer with that dead paper's id or text.
+        results = keep_live_hits(owner_id, results)
 
         paper_chunks = []
 

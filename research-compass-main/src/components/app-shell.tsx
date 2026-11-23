@@ -49,10 +49,19 @@ const PAPER_STATUS_LABEL: Record<string, string> = {
  * One paper that is not yet ready to query.
  *
  * Not a link: these papers have no indexed content, so the detail page
- * would have nothing to show. No retry control is offered — there is no
- * retry endpoint to call yet.
+ * would have nothing to show. A paper left "deleting" by a removal that
+ * failed partway offers Retry removal, which repeats the same
+ * delete-by-id request; the backend finishes whatever is left.
  */
-function PaperStatusRow({ paper }: { paper: PaperDetail }) {
+function PaperStatusRow({
+  paper,
+  onRetryRemoval,
+  retrying = false,
+}: {
+  paper: PaperDetail;
+  onRetryRemoval?: (e: React.MouseEvent) => void;
+  retrying?: boolean;
+}) {
   const failed = paper.status === "failed";
   const label = PAPER_STATUS_LABEL[paper.status] ?? "Processing…";
 
@@ -74,9 +83,24 @@ function PaperStatusRow({ paper }: { paper: PaperDetail }) {
         {failed && paper.status_detail && (
           <div className="text-[11px] text-muted-foreground">{paper.status_detail}</div>
         )}
+        {paper.status === "deleting" && onRetryRemoval && (
+          <button
+            onClick={onRetryRemoval}
+            disabled={retrying}
+            className="text-[11px] underline hover:text-foreground disabled:opacity-50"
+            title="Retry removal"
+          >
+            {retrying ? "Retrying…" : "Retry removal"}
+          </button>
+        )}
       </div>
     </div>
   );
+}
+
+/** Enough of a paper's id to tell two same-named papers apart on screen. */
+function shortId(paperId: string) {
+  return paperId.slice(0, 8);
 }
 
 function isMacPlatform() {
@@ -98,16 +122,22 @@ export function AppShell({
   title,
   subtitle,
   actions,
+  currentPaper,
 }: {
   children: ReactNode;
   title: string;
   subtitle?: string;
   actions?: ReactNode;
+  /** The title of the paper the page has open, if any (/paper/$paperName). */
+  currentPaper?: string;
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [deletingPaper, setDeletingPaper] = useState<string | null>(null);
+  // Why the last delete started from this sidebar failed. Nothing else
+  // reports it: the paper page shows only its own Delete button's errors.
+  const [deleteFailure, setDeleteFailure] = useState("");
   const { session, user, isLoading: authLoading, signInWithGoogle, signOut } = useAuth();
   const userId = user?.id;
 
@@ -120,9 +150,17 @@ export function AppShell({
     enabled: !!userId,
   });
 
-  // The ready-to-query titles, derived rather than fetched separately so
-  // the sidebar still costs one request.
-  const papers = allPapers.filter((p) => p.status === "indexed").map((p) => p.title);
+  // The ready-to-query papers, derived rather than fetched separately so
+  // the sidebar still costs one request. Kept as rows, not bare titles:
+  // two different PDFs can share a filename, and only paper_id tells them
+  // apart — it is what keys each entry and what its delete button sends.
+  const papers = allPapers.filter((p) => p.status === "indexed");
+
+  // Titles held by more than one paper, in any state. Those entries also
+  // show a short id, so two same-named copies are distinguishable.
+  const sharedTitles = new Set(
+    allPapers.map((p) => p.title).filter((title, index, titles) => titles.indexOf(title) !== index),
+  );
 
   // Anything still being processed, or that failed. These were invisible
   // before: /papers returns indexed titles only, so a paper whose upload
@@ -154,18 +192,18 @@ export function AppShell({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isMac, openLibrarySearch]);
 
-  const handleDeletePaper = async (e: React.MouseEvent, paperName: string) => {
+  const handleDeletePaper = async (e: React.MouseEvent, paper: PaperDetail) => {
     e.preventDefault();
     e.stopPropagation();
-    if (
-      !confirm(
-        `Delete "${paperName.replace(/_/g, " ")}"?\n\nThis will permanently remove the PDF and all indexed vectors.`,
-      )
-    )
-      return;
-    setDeletingPaper(paperName);
+    const name = paper.title.replace(/_/g, " ");
+    const prompt = sharedTitles.has(paper.title)
+      ? `Delete "${name}" (${shortId(paper.paper_id)})?\n\nAnother paper in your library has the same name. Only this one will be deleted.\n\nThis will permanently remove the PDF and all indexed vectors.`
+      : `Delete "${name}"?\n\nThis will permanently remove the PDF and all indexed vectors.`;
+    if (!confirm(prompt)) return;
+    setDeleteFailure("");
+    setDeletingPaper(paper.paper_id);
     try {
-      await deletePaper(paperName);
+      await deletePaper(paper.paper_id);
       qc.invalidateQueries({ queryKey: queryKeys.papers(userId) });
       qc.invalidateQueries({ queryKey: queryKeys.papersDetailed(userId) });
       qc.invalidateQueries({ queryKey: queryKeys.stats(userId) });
@@ -173,8 +211,29 @@ export function AppShell({
       // the ["papers"] prefix — invalidate it explicitly so results for a
       // deleted paper don't linger.
       qc.invalidateQueries({ queryKey: queryKeys.searchAll() });
-    } catch {
-      // ignore — paper details page also shows the error
+      // Details are cached by title. While another paper keeps this title,
+      // what is cached under it may describe the deleted copy, so it is
+      // fetched again. Otherwise it describes a paper that no longer exists
+      // and must never be shown again — and a page open on that title has
+      // nothing left to show, so the reader goes to the dashboard.
+      const detailsKey = queryKeys.paperDetails(userId, paper.title);
+      if (allPapers.some((p) => p.title === paper.title && p.paper_id !== paper.paper_id)) {
+        qc.invalidateQueries({ queryKey: detailsKey, exact: true });
+      } else {
+        qc.removeQueries({ queryKey: detailsKey, exact: true });
+        if (paper.title === currentPaper) navigate({ to: "/dashboard" });
+      }
+    } catch (err: unknown) {
+      // The paper stays listed, and the backend's own message says whether
+      // it can be deleted again. Named with its short id when another paper
+      // shares the title.
+      const which = sharedTitles.has(paper.title) ? `${name} (${shortId(paper.paper_id)})` : name;
+      setDeleteFailure(
+        `Could not delete “${which}”. ${err instanceof Error ? err.message : "Delete failed."}`,
+      );
+      // Its status is read again: a removal that failed partway leaves it
+      // "deleting" on the server, and the list must not still show it ready.
+      qc.invalidateQueries({ queryKey: queryKeys.papersDetailed(userId) });
     } finally {
       setDeletingPaper(null);
     }
@@ -219,6 +278,16 @@ export function AppShell({
               );
             })}
 
+            {deleteFailure && (
+              <div
+                role="alert"
+                className="mt-4 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-[11px] text-destructive"
+              >
+                <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
+                <span>{deleteFailure}</span>
+              </div>
+            )}
+
             {/* Indexed Papers */}
             {papers.length > 0 && (
               <div className="mt-4">
@@ -226,23 +295,28 @@ export function AppShell({
                   Indexed Papers
                 </div>
                 {papers.map((p) => (
-                  <div key={p} className="group relative flex items-center">
+                  <div key={p.paper_id} className="group relative flex items-center">
                     <Link
                       to="/paper/$paperName"
-                      params={{ paperName: p }}
+                      params={{ paperName: p.title }}
                       className="flex flex-1 items-center gap-2 rounded-md px-3 py-1.5 text-[12px] text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-                      title={p.replace(/_/g, " ")}
+                      title={p.title.replace(/_/g, " ")}
                     >
                       <FileText className="h-3 w-3 shrink-0" />
-                      <span className="truncate">{p.replace(/_/g, " ")}</span>
+                      <span className="truncate">{p.title.replace(/_/g, " ")}</span>
+                      {sharedTitles.has(p.title) && (
+                        <span className="shrink-0 font-mono text-[10px]">
+                          {shortId(p.paper_id)}
+                        </span>
+                      )}
                     </Link>
                     <button
                       onClick={(e) => handleDeletePaper(e, p)}
-                      disabled={deletingPaper === p}
+                      disabled={deletingPaper === p.paper_id}
                       className="absolute right-1.5 hidden h-5 w-5 items-center justify-center rounded text-muted-foreground hover:text-destructive group-hover:flex"
                       title="Delete paper"
                     >
-                      {deletingPaper === p ? (
+                      {deletingPaper === p.paper_id ? (
                         <Loader2 className="h-3 w-3 animate-spin" />
                       ) : (
                         <X className="h-3 w-3" />
@@ -259,7 +333,12 @@ export function AppShell({
                   Processing
                 </div>
                 {unfinished.map((p) => (
-                  <PaperStatusRow key={p.paper_id} paper={p} />
+                  <PaperStatusRow
+                    key={p.paper_id}
+                    paper={p}
+                    onRetryRemoval={(e) => handleDeletePaper(e, p)}
+                    retrying={deletingPaper === p.paper_id}
+                  />
                 ))}
               </div>
             )}

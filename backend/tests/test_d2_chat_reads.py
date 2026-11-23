@@ -26,6 +26,8 @@ BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
+import tests  # noqa: E402,F401 — hermetic bootstrap; must precede every app import
+
 from dotenv import load_dotenv
 load_dotenv(os.path.join(BACKEND_DIR, ".env"))
 
@@ -154,10 +156,26 @@ class ChatReadTestCase(unittest.TestCase):
         finally:
             s.close()
 
+    def evidence_paper(self):
+        """The paper default hits come from: one the asking owner really
+        has, indexed — retrieval uses no other
+        (app/services/retrieval_guard.py). USER_A's is PAPER_A_ID, so the
+        current_paper_id assertions below mean what they did."""
+        owner = self._current_owner
+        paper_id = PAPER_A_ID if owner == USER_A else str(uuid.uuid5(uuid.NAMESPACE_URL, f"evidence:{owner}"))
+        session = self.factory()
+        try:
+            exists = session.get(Paper, uuid.UUID(paper_id)) is not None
+        finally:
+            session.close()
+        if not exists:
+            self.seed_paper(paper_id, owner, PAPER_A)
+        return paper_id
+
     def ask(self, question, hits=None, answer="An answer [Page 3].", **params):
         """Drives the real endpoint, capturing the search query actually
         embedded and the prompt actually sent to the model."""
-        hits = [_hit()] if hits is None else hits
+        hits = [_hit(paper_id=self.evidence_paper())] if hits is None else hits
 
         with patch("app.api.ask_stream.encode_query") as mock_encode, \
              patch("app.api.ask_stream.client") as mock_qdrant, \
@@ -391,6 +409,8 @@ class TestTopicAndPaperCarryOver(ChatReadTestCase):
         """Existing behaviour: an unmatched lock keeps the unfiltered
         results rather than answering from nothing."""
         self.seed_paper(PAPER_A_ID, USER_A, PAPER_A)
+        # Another of this owner's papers: retrieval uses only those.
+        self.seed_paper(PAPER_B_ID, USER_A, PAPER_B)
         self.authenticate_as(USER_A)
 
         self.ask("What is attention?", hits=[_hit(paper=PAPER_A)])

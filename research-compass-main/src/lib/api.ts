@@ -551,14 +551,38 @@ export async function exportReport(): Promise<void> {
   URL.revokeObjectURL(url);
 }
 
-export async function deletePaper(paperName: string): Promise<void> {
-  const response = await authFetch(`${API_BASE_URL}/paper/${encodeURIComponent(paperName)}`, {
+/** Shown when a failed delete carries no message of the backend's own. */
+const DELETE_FAILED_MESSAGE = "Delete failed. Please try again.";
+
+/**
+ * The backend's own `detail` from a failed response, or `fallback`. Nothing
+ * else in the body is ever shown: a plain-text, HTML or empty body (a
+ * gateway's error page, say) gets the fallback — never a JSON parsing
+ * error, and never the raw text.
+ */
+async function errorDetail(response: Response, fallback: string): Promise<string> {
+  try {
+    const data = await response.json();
+    if (typeof data?.detail === "string" && data.detail) return data.detail;
+  } catch {
+    // Not JSON: fall through to our own wording.
+  }
+  return fallback;
+}
+
+/**
+ * Deletes exactly one paper, named by its immutable id — never by title.
+ * Two different PDFs can share a filename, and a title-based delete used
+ * to remove whichever matching row the database returned first.
+ */
+export async function deletePaper(paperId: string): Promise<void> {
+  const response = await authFetch(`${API_BASE_URL}/papers/${encodeURIComponent(paperId)}`, {
     method: "DELETE",
   });
-  const data = await response.json();
   if (!response.ok) {
-    throw new Error(data.detail || "Delete failed");
+    throw new Error(await errorDetail(response, DELETE_FAILED_MESSAGE));
   }
+  await response.json();
 }
 
 // ============================================================
