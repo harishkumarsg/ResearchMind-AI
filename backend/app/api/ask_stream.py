@@ -22,13 +22,18 @@ from app.core.providers import (
     internal_error_payload,
 )
 from app.core.quota import charge as charge_quota
-from app.core.usage_guard import precheck_ai_generation
+from app.core.usage_guard import precheck_ai_unit, rate_limit_ai_generation
 from app.db.models import Paper
 from app.db.session import session_scope
 from app.rag.embedder import encode_query
 from app.rag.vector_store import COLLECTION_NAME, client
 from app.rag.reranker import rerank_results
 from app.services.retrieval_guard import keep_live_hits
+from app.services.library_questions import (
+    indexed_paper_titles,
+    is_library_question,
+    library_reply_parts,
+)
 from app.services.chat_store import (
     coerce_paper_id,
     load_chat_state,
@@ -139,6 +144,10 @@ NO_ANSWER_RESPONSE = "I could not find that information in the indexed papers."
 # "which papers are in my library?". Counting the papers that happen to
 # appear in the passages would give a confident, wrong number. It says so
 # instead and points to the sidebar, which lists every indexed paper.
+#
+# This is now only a fallback. The phrasings is_library_question()
+# recognises never reach the model: library_stream() answers them from
+# Postgres. The rule still covers phrasings the matcher does not.
 LIBRARY_SCOPE_RESPONSE = (
     "I only see passages retrieved for your question, not your whole library, "
     "so I can't count or list your papers. Your indexed papers are listed in "
@@ -311,11 +320,55 @@ def resolve_owned_paper_id(owner_id: str, paper_id: str) -> str:
     return str(wanted) if row is not None else ""
 
 
+_SSE_HEADERS = {
+    "Cache-Control": "no-cache",
+    "X-Accel-Buffering": "no",
+}
+
+
+def library_stream(owner_id: str, question: str):
+    """Answer a question about the library itself from Postgres.
+
+    The same SSE shape as an ordinary answer (token frames, then done),
+    with no citations, because no passage supports the reply: it comes
+    from the papers table. No embedding, no generation and no AI
+    allowance; the route's burst limit has already applied.
+
+    Both turns are recorded like any other, so the conversation history
+    stays complete. current_topic and current_paper_id are left as they
+    were: this turn is about no paper, and a later "what about them?"
+    should still follow the previous topic.
+    """
+    try:
+        titles = indexed_paper_titles(owner_id)
+        parts = library_reply_parts(titles)
+        chat_session_id = persist_user_turn(owner_id, question)
+        persist_assistant_turn(chat_session_id, owner_id, "".join(parts))
+    except Exception as e:
+        logger.warning("ask-stream library reply failed: internal_error (%s)", type(e).__name__)
+        failure = internal_error_payload()
+        yield generate_sse_event({
+            "type": "error",
+            "code": failure["code"],
+            "text": failure["message"],
+        })
+        return
+
+    for part in parts:
+        yield generate_sse_event({"type": "token", "text": part})
+    yield generate_sse_event({
+        "type": "done",
+        "citations": [],
+        "sources": [],
+        "is_followup": False,
+    })
+
+
 @router.get("/ask-stream")
 def ask_stream(
     question: str,
     paper_id: str = "",
-    owner_id: str = Depends(precheck_ai_generation),
+    owner_id: str = Depends(rate_limit_ai_generation),
 ):
     """Answer from the owner's library, or from ONE of their papers.
 
@@ -324,7 +377,24 @@ def ask_stream(
     paper — it never widens anything: the owner_id term below is applied
     unconditionally either way, and paper_id is verified to belong to
     this owner before it is used at all.
+
+    A question about the library itself ("how many papers do I have?")
+    asked without paper_id is answered from Postgres by library_stream()
+    and never reaches a provider. With paper_id, the paper Ask panel's
+    questions always take the ordinary path below.
     """
+    if not paper_id and is_library_question(question):
+        return StreamingResponse(
+            library_stream(owner_id, question),
+            media_type="text/event-stream",
+            headers=_SSE_HEADERS,
+        )
+
+    # The read-only AI allowance check, before anything streams, so an
+    # exhausted allowance is still a real HTTP 429. The unit itself is
+    # charged inside the generator, just before the first provider call.
+    precheck_ai_unit(owner_id)
+
     # Resolved OUTSIDE the generator so an unknown or non-owned paper is
     # a clean pre-stream rejection rather than an SSE error frame.
     scoped_paper_id = ""
@@ -657,8 +727,5 @@ def ask_stream(
     return StreamingResponse(
         stream(),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
+        headers=_SSE_HEADERS,
     )

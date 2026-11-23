@@ -66,9 +66,29 @@ def charge_ai_unit(owner_id: str) -> None:
 #: statement is a provider call; no route uses it today.
 charge_ai_generation = _guard(limits_config.AI_GENERATION, charge=True)
 
-#: Checks the AI allowance without consuming it. /ask-stream charges
-#: inside its generator, immediately before the first provider call.
+#: Checks the AI allowance without consuming it; the handler charges later,
+#: immediately before its first provider call.
 precheck_ai_generation = _guard(limits_config.AI_GENERATION, charge=False)
+
+
+def rate_limit_ai_generation(owner_id: str = Depends(get_current_owner_id)) -> str:
+    """The AI burst limit alone, without the daily-allowance pre-check.
+
+    For /ask-stream, which answers questions about the library itself from
+    Postgres with no provider call. Those must not be refused because the
+    AI allowance is spent, so the handler calls precheck_ai_unit() itself,
+    and only for questions that will reach a provider. The burst limit
+    still applies to every request.
+    """
+    enforce_burst(owner_id, limits_config.AI_GENERATION)
+    return owner_id
+
+
+def precheck_ai_unit(owner_id: str) -> None:
+    """precheck_ai_generation's read-only allowance check, called from a
+    handler before its response starts. Raises QuotaExceeded, which the
+    app turns into a real HTTP 429."""
+    quota.ensure_within_quota(owner_id, limits_config.AI_GENERATION)
 
 #: Checks the indexing allowance without consuming it. /index-document
 #: charges only once it knows a run will actually start.
