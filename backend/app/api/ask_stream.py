@@ -134,6 +134,17 @@ def is_follow_up_question(question: str) -> bool:
 # citation-suppression check compares against can never drift apart.
 NO_ANSWER_RESPONSE = "I could not find that information in the indexed papers."
 
+# The model sees only the passages retrieved for this one question, never
+# the whole library, so it cannot answer "how many papers do I have?" or
+# "which papers are in my library?". Counting the papers that happen to
+# appear in the passages would give a confident, wrong number. It says so
+# instead and points to the sidebar, which lists every indexed paper.
+LIBRARY_SCOPE_RESPONSE = (
+    "I only see passages retrieved for your question, not your whole library, "
+    "so I can't count or list your papers. Your indexed papers are listed in "
+    "the sidebar under Indexed Papers."
+)
+
 SYSTEM_PROMPT = f"""
 You are ResearchMind AI.
 
@@ -148,18 +159,25 @@ RULES:
 
 {NO_ANSWER_RESPONSE}
 
-5. Keep answers concise.
-6. Use bullet points when appropriate.
-7. Limit answers to 3-8 sentences unless explicitly asked for details.
-8. Return only the answer.
+5. The context holds only passages retrieved for this question, not the
+   user's whole library. If the question is about the library itself
+   (how many papers it has, which papers or titles it contains), do not
+   count or list papers from the passages; respond exactly:
+
+{LIBRARY_SCOPE_RESPONSE}
+
+6. Keep answers concise.
+7. Use bullet points when appropriate.
+8. Limit answers to 3-8 sentences unless explicitly asked for details.
+9. Return only the answer.
 
 CITATIONS:
 
-9. Every passage in the context is preceded by its page label, e.g. [Page 61].
-10. Cite ONLY those [Page N] labels, exactly as they appear in the context.
-11. Never invent or infer a page number that is not present in the context.
-12. Never cite a section number or section title as a location.
-13. Passage text may itself mention things like "Section 4" or "see Section 7.3".
+10. Every passage in the context is preceded by its page label, e.g. [Page 61].
+11. Cite ONLY those [Page N] labels, exactly as they appear in the context.
+12. Never invent or infer a page number that is not present in the context.
+13. Never cite a section number or section title as a location.
+14. Passage text may itself mention things like "Section 4" or "see Section 7.3".
     Those are the paper's own internal cross-references, pointing at material
     you have NOT been given. Never repeat them as citations.
 """
@@ -572,7 +590,8 @@ def ask_stream(
 
             # A refusal means the retrieved passages did NOT support an
             # answer. Presenting them as "Sources" would imply they did.
-            if full_answer == NO_ANSWER_RESPONSE:
+            # The same holds for the library-scope reply.
+            if full_answer in (NO_ANSWER_RESPONSE, LIBRARY_SCOPE_RESPONSE):
                 citations = []
 
             # Record the assistant's turn and advance the session

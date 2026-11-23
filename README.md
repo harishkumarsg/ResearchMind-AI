@@ -61,7 +61,7 @@ FastAPI backend — the only authorization boundary
 
 ## Tests
 
-1,300+ backend tests (`unittest`) and 450+ frontend tests (Vitest). The backend suite runs fully offline: providers are mocked and persistence uses in-memory SQLite.
+1,595 backend tests (`unittest`) and 562 frontend tests (Vitest), counted from a local run on 2026-11-23. The backend suite runs fully offline: providers are mocked and persistence uses in-memory SQLite. Offline, 30 backend tests are skipped: 20 PostgreSQL lifecycle tests, 4 live-infrastructure tests, 3 deferred Qdrant acceptance tests, and 3 that need local PDFs or the Linux target platform.
 
 ```bash
 cd backend
@@ -73,6 +73,8 @@ python -m unittest discover -s tests
 ```
 
 Tests that need live infrastructure are skipped unless `RUN_LIVE_INFRA_TESTS=1`. Frontend: `cd research-compass-main && npm ci --legacy-peer-deps && npm test` (the flag works around a known peer-range conflict in a locked prerelease dependency; a proper lockfile fix is pending). Both suites run in CI (`.github/workflows/tests.yml`).
+
+The PostgreSQL lifecycle tests (`backend/tests/test_paper_lifecycle_postgres.py`) check the paper claim protocol under real row locks, as the restricted app role with RLS forced. They need a disposable database and are skipped unless `RUN_POSTGRES_LIFECYCLE_TESTS=1` and `POSTGRES_LIFECYCLE_TEST_URL` are set. `.github/workflows/postgres-lifecycle.yml` runs them on every pull request against a throwaway `postgres:17` service container, migrated from `backend/migrations/`; it uses no repository secret and cannot reach Supabase.
 
 ## Retrieval evaluation
 

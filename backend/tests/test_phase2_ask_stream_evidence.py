@@ -35,7 +35,12 @@ load_dotenv(os.path.join(BACKEND_DIR, ".env"))
 
 from fastapi.testclient import TestClient
 
-from app.api.ask_stream import MAX_CONTEXT, NO_ANSWER_RESPONSE, SYSTEM_PROMPT
+from app.api.ask_stream import (
+    LIBRARY_SCOPE_RESPONSE,
+    MAX_CONTEXT,
+    NO_ANSWER_RESPONSE,
+    SYSTEM_PROMPT,
+)
 from tests.sqlite_harness import attach_sqlite_db
 from app.core.auth import get_current_owner_id
 from app.memory import _store as module_store
@@ -125,6 +130,7 @@ class AskStreamEvidenceTestCase(unittest.TestCase):
                     events.append(json.loads(frame[len("data:"):].strip()))
 
             create_kwargs = mock_groq.chat.completions.create.call_args.kwargs
+            self.sent_messages = create_kwargs["messages"]
             prompt = create_kwargs["messages"][1]["content"]
 
         done = [e for e in events if e.get("type") == "done"]
@@ -275,6 +281,45 @@ class TestA6RefusalSuppressesSources(AskStreamEvidenceTestCase):
 
         self.assertEqual(len(citations), 1)
         self.assertEqual(citations[0]["page"], 6)
+
+
+class TestLibraryScopeQuestions(AskStreamEvidenceTestCase):
+    """Questions about the library itself (how many papers, which ones).
+
+    The model sees only the passages retrieved for one question, so it
+    cannot count or list the library. The prompt tells it to say so and
+    point to the sidebar, and that reply carries no Sources.
+    """
+
+    def test_system_prompt_carries_the_library_scope_rule_and_reply(self):
+        lowered = SYSTEM_PROMPT.lower()
+        self.assertIn("how many papers", lowered)
+        self.assertIn("which papers", lowered)
+        self.assertIn(LIBRARY_SCOPE_RESPONSE, SYSTEM_PROMPT)
+
+    def test_reply_says_it_cannot_count_or_list_and_points_to_the_sidebar(self):
+        lowered = LIBRARY_SCOPE_RESPONSE.lower()
+        self.assertIn("can't count or list", lowered)
+        self.assertIn("sidebar", lowered)
+
+    def test_library_scope_rule_is_sent_in_the_system_message(self):
+        hits = [_hit("id-1", 3, 0, "A passage from one paper.")]
+        self._run(hits, answer=LIBRARY_SCOPE_RESPONSE, question="how many papers do I have?")
+        system = self.sent_messages[0]
+        self.assertEqual(system["role"], "system")
+        self.assertIn(LIBRARY_SCOPE_RESPONSE, system["content"])
+
+    def test_library_scope_reply_emits_no_citations(self):
+        hits = [
+            _hit("id-1", 3, 0, "A passage from one paper."),
+            _hit("id-2", 8, 0, "A passage from another paper."),
+        ]
+        supplied, citations, _ = self._run(
+            hits, answer=LIBRARY_SCOPE_RESPONSE, question="which papers do I have?"
+        )
+
+        self.assertEqual(len(supplied), 2)
+        self.assertEqual(citations, [])
 
 
 class TestCitedFlag(AskStreamEvidenceTestCase):

@@ -3,6 +3,7 @@ import { AppShell } from "@/components/app-shell";
 import { AlertCircle, ArrowUp, FileText, Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import {
   streamAskQuestion,
   partitionCitations,
@@ -168,9 +169,17 @@ function AskPage() {
               )}
             </div>
             <div className="rounded-xl border border-border bg-surface p-6">
-              <p className="whitespace-pre-wrap leading-[1.75] text-[15px] text-foreground/90">
-                {answer}
-              </p>
+              {/* The model answers in Markdown (headings, lists, bold).
+                  Rendered the same way as the paper page's Ask panel. */}
+              <div
+                className="prose prose-sm max-w-none text-foreground/90
+                  prose-headings:font-semibold prose-headings:tracking-tight prose-headings:text-foreground
+                  prose-p:leading-[1.7] prose-p:text-[14px]
+                  prose-li:text-[14px] prose-li:leading-[1.7]
+                  prose-strong:text-foreground prose-strong:font-semibold"
+              >
+                <ReactMarkdown>{answer}</ReactMarkdown>
+              </div>
             </div>
           </div>
         )}

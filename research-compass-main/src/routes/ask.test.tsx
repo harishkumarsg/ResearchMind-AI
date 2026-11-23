@@ -82,3 +82,23 @@ describe("Ask page — a stream that fails after answer text arrived", () => {
     expect(screen.queryByText("ResearchMind Answer")).not.toBeInTheDocument();
   });
 });
+
+describe("Ask page — the answer is Markdown", () => {
+  it("renders headings, lists and bold instead of the raw syntax", async () => {
+    (streamAskQuestion as any).mockImplementation(async (_q: string, onEvent: any) => {
+      onEvent({ type: "token", text: "### Method\n\n" });
+      onEvent({ type: "token", text: "The model uses **two encoders**:\n\n" });
+      onEvent({ type: "token", text: "- a text encoder\n- an image encoder\n" });
+      onEvent({ type: "done", citations: [] });
+    });
+
+    askQuestion();
+
+    expect(await screen.findByRole("heading", { name: "Method" })).toBeInTheDocument();
+    expect(screen.getByText("two encoders").tagName).toBe("STRONG");
+    const items = screen.getAllByRole("listitem").map((li) => li.textContent);
+    expect(items).toEqual(["a text encoder", "an image encoder"]);
+    // No Markdown markers leak into the page.
+    expect(screen.queryByText(/###|\*\*/)).not.toBeInTheDocument();
+  });
+});
