@@ -49,8 +49,8 @@ Safety:
     makes no Voyage call at all.
 
 Variants (--variant, default baseline; see VARIANTS) measure candidate
-fixes with the same scoring: rerank-off, no-refs, no-refs-top20-rerank10 and
-no-refs-top20-rerank10-ctx6000. Production code is not changed: a variant
+fixes with the same scoring: rerank-off, no-refs, no-refs-ctx6000-rerank-off,
+no-refs-top20-rerank10 and no-refs-top20-rerank10-ctx6000. Production code is not changed: a variant
 only filters the pages handed to the production chunker, changes the search
 limit or MAX_CONTEXT for this process, sets RERANK_ENABLED, or (rerank10)
 replaces the rerank call with rerank_full_text. Each run writes
@@ -60,7 +60,9 @@ Usage, from backend/, with the production venv:
     python eval/run_retrieval_eval.py [--variant baseline]
         [--questions eval/questions_dev.jsonl] [--run-name NAME] [--papers DIR]
         [--offline-check] [--cache-only] [--compare-only]
-questions_test.jsonl is refused unless --allow-test is given.
+questions_test.jsonl is refused unless --allow-test is given, and a test
+result that already exists is never overwritten: the test set is run once
+(see eval/README.md).
 --offline-check stops after the imports and the local collection setup,
 before any Voyage call. --cache-only never calls Voyage and never reads the
 production .env: every Voyage result must already be cached.
@@ -117,7 +119,10 @@ KS = (1, 3, 5, 8)
 #:   max_context   None = production MAX_CONTEXT (4000)
 #:   network       False = every Voyage result must come from the cache; a
 #:                 cache miss stops the run instead of calling Voyage
-#:   after         the variant whose cached Voyage results this one reuses
+#:   after         the variant whose results must exist for the same split:
+#:                 its cached Voyage results (at least the query embeddings)
+#:                 are reused. The no-refs index itself is shared by every
+#:                 split and rebuilt from cached vectors if missing.
 VARIANTS = {
     "baseline": dict(index="full", search_limit=None, rerank="production", max_context=None,
                      network=True, description="Production retrieval, reranking on."),
@@ -129,6 +134,11 @@ VARIANTS = {
                     network=True, after="baseline",
                     description="Reference-list pages not indexed; mixed pages indexed only up to "
                                 "the References heading. Otherwise as baseline."),
+    "no-refs-ctx6000-rerank-off": dict(index="no-refs", search_limit=None, rerank="off",
+                                       max_context=6000, network=False, after="baseline",
+                                       description="no-refs with RERANK_ENABLED=false and MAX_CONTEXT "
+                                                   "6000: vector top 5, top 4, _select_evidence. One "
+                                                   "Voyage request per question (the query embedding)."),
     # Reranking all 20 on full text needs a paid Voyage tier: one such request
     # measured 6.2K-7.2K tokens, against the free tier's 10K tokens/min, and
     # the free-tier attempt (variant no-refs-rerank-all, since removed) was too
@@ -137,9 +147,11 @@ VARIANTS = {
                                    max_context=None, network=True, after="no-refs",
                                    description="no-refs, vector top 20, rerank the top 10 on full "
                                                "chunk text, keep the top 4."),
+    # May call Voyage: on the test set it is run without no-refs-top20-rerank10,
+    # so its rerank calls are new there. On dev they all come from the cache.
     "no-refs-top20-rerank10-ctx6000": dict(index="no-refs", search_limit=20, rerank="full",
-                                           rerank_n=10, max_context=6000, network=False,
-                                           after="no-refs-top20-rerank10",
+                                           rerank_n=10, max_context=6000, network=True,
+                                           after="baseline",
                                            description="As no-refs-top20-rerank10, with MAX_CONTEXT 6000."),
 }
 
@@ -862,6 +874,8 @@ def main(argv=None):
     if args.cache_only:
         variant["network"] = False
     run_name = args.run_name or f"{args.variant}-{split}"
+    if split == "test" and (RESULTS_DIR / f"{run_name}.json").exists():
+        raise SystemExit(f"results/{run_name}.json exists: the test set is run once and never re-run.")
     if variant.get("after") and not (RESULTS_DIR / f"{variant['after']}-{split}.json").exists():
         raise SystemExit(f"Run --variant {variant['after']} first: {args.variant} reuses its cached results.")
 
