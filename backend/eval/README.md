@@ -15,6 +15,8 @@
 | `questions_dev.jsonl` / `questions_test.jsonl` | 38 / 26 split of `questions.jsonl` by `split_questions.py` (stratified by type, seed 20261124, `cross-09` pinned to dev). Tune on dev only; the test file is for the final reported numbers. |
 | `check_questions.py` | Offline check of every item against the PDF text (page existence and length, reference pages, hint support, BM25 page ranking, broad gold lists, unanswerable items, library-question routing). Run from `backend/`: `python eval/check_questions.py`. |
 | `check_report.csv` | Its output for `questions.jsonl`: `id, status, reasons, current_gold, suggested_gold`. Status is `OK`, `FLAG` (open) or `REVIEWED` (still flagged, but the item has a `review_note` recording the author's decision). |
+| `run_retrieval_eval.py` | Runs the questions through the production retrieval path (and candidate variants, `--variant`) and scores the rankings. See its docstring. |
+| `results/` | One `<variant>-<split>.json` and `.md` per run, and `compare-<split>.md` across runs. |
 
 Edits in `questions.jsonl` are listed in each item's `edits` field: ten questions
 (`lmv-02/03/04/06/07/08/10`, `real-01/06/09`) now name the paper or method, and `cross-09`
@@ -115,3 +117,37 @@ Page counts and page numbering do not depend on the version. Text could differ s
   stricter target.
 - The answer hints are summaries. Check them against the cited pages before treating
   them as answers.
+
+## Test-set protocol
+
+Written on 2026-11-24, before any retrieval run used `questions_test.jsonl`. Every
+variant so far was designed and compared on `questions_dev.jsonl` only
+(`results/compare-dev.md`).
+
+**The test set is run once.** Each run below is made exactly once on
+`questions_test.jsonl`, with `run_retrieval_eval.py` as of the commit that adds this
+section, and every result is reported, including any that is worse than on dev. After
+the test results are seen, nothing is tuned for these numbers: no change to the
+variants, the scoring, the questions, the gold pages or the script. A gold or question
+error found while reading test results is recorded as a note next to the results, not
+fixed in them. The script enforces the "once": it refuses to overwrite a test result
+that already exists. A run that stops before writing its result file is resumed with the
+same command. Its Voyage results so far are cached, so it continues the same run rather
+than starting a new one.
+
+`questions_test.jsonl` is frozen at SHA-256
+`947a7ee4eb31ef164afb15de4f9b23c19e9deea13cc1c35b4ad9443dec5755c7` (26 items: 6
+factual, 6 method, 4 results, 4 limitation, 4 cross-paper, 2 unanswerable).
+
+Runs reported, in this order:
+
+| Run | What it measures | Why it is reported |
+|---|---|---|
+| `baseline` | Production retrieval with `RERANK_ENABLED=true`: vector top 8, rerank the top 5 on their first 400 characters, keep 4, 4000-character context. | The reference point. |
+| `rerank-off` | Production with `RERANK_ENABLED=false`, the code's default: vector top 5 unchanged. | The other production setting. |
+| `no-refs-ctx6000-rerank-off` | Reference-list pages not indexed and mixed pages cut at the References heading; reranking off; 6000-character context. One Voyage request per question. | Candidate that fits Voyage's free tier best. Dev: context hit 97% (baseline 91%). |
+| `no-refs-top20-rerank10-ctx6000` | Same index; vector top 20, rerank the top 10 on full chunk text, keep 4; 6000-character context. Two Voyage requests per question. | Candidate with the best dev results. Dev: context hit 97%, cross-paper gold-paper share in context 81% (the other candidate: 71%). |
+
+The dev-only steps `no-refs` and `no-refs-top20-rerank10` (4000-character context) are
+not run on the test set. Test results go to `results/<variant>-test.json` and `.md`
+and to `results/compare-test.md`, with the same metrics as dev.
