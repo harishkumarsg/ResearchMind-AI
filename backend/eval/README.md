@@ -1,9 +1,27 @@
 # Retrieval evaluation set (draft)
 
-> **Status: AI-drafted, not yet reviewed.** Every question, gold page and answer hint in
-> `questions_draft.jsonl` was drafted by Claude Code (`"drafted_by": "claude-code"`).
-> The author must review the set against the PDFs before it is used to measure anything,
-> correcting or deleting items as needed. Until then, do not report numbers computed from it.
+> **Status: AI-drafted; gold pages checked automatically against the PDF text
+> (check_questions.py); flagged items reviewed by the author: pending.**
+> Every question, gold page and answer hint was drafted by Claude Code
+> (`"drafted_by": "claude-code"`). Until the author has decided the items flagged in
+> `check_report.csv`, do not report numbers computed from the set.
+
+## Files
+
+| File | Purpose |
+|---|---|
+| `questions_draft.jsonl` | The original 63 drafted items, unchanged. |
+| `questions.jsonl` | Working set, 64 items: the draft plus the edits below and `cross-09`. |
+| `questions_dev.jsonl` / `questions_test.jsonl` | 38 / 26 split of `questions.jsonl` by `split_questions.py` (stratified by type, seed 20261124, `cross-09` pinned to dev). Tune on dev only; the test file is for the final reported numbers. |
+| `check_questions.py` | Offline check of every item against the PDF text (page existence and length, reference pages, hint support, BM25 page ranking, broad gold lists, unanswerable items, library-question routing). Run from `backend/`: `python eval/check_questions.py`. |
+| `check_report.csv` | Its output for `questions.jsonl`: `id, status (OK/FLAG), reasons, current_gold, suggested_gold`. |
+
+Edits in `questions.jsonl` are listed in each item's `edits` field: ten questions
+(`lmv-02/03/04/06/07/08/10`, `real-01/06/09`) now name the paper or method, and `cross-09`
+was added. It has `"gold_level": "paper"`: any retrieved page from a gold paper counts as
+a hit, and the listed page is only the evidence that the paper uses a VLM. The check
+found no clear-cut gold fix (no gold page is short or a reference page, and every broad
+list needs a judgement), so no gold page was changed automatically.
 
 This is a labelled question set for evaluating ResearchMind's retrieval: for each question,
 does retrieval return chunks from the right paper and page?
