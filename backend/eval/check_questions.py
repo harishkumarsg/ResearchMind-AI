@@ -522,7 +522,11 @@ def main(argv=None):
         reasons, info, suggested, fixes = check_item(q, papers, library_match, corpus)
         for edit in q.get("edits", []):
             info.append(f"edited: {edit}")
-        status = "FLAG" if reasons else "OK"
+        # A flag the author has already decided stays in the report with its
+        # reasons, but no longer counts as open.
+        if q.get("review_note"):
+            info.append(f"review ({q.get('decided_by', 'reviewer')}): {q['review_note']}")
+        status = ("REVIEWED" if q.get("review_note") else "FLAG") if reasons else "OK"
         counts[status] += 1
         if fixes:
             counts["clear-cut fixes"] += 1
@@ -553,7 +557,7 @@ def main(argv=None):
                 fh.write(json.dumps(q, ensure_ascii=False) + "\n")
 
     print(f"items {len(questions)}: OK {counts['OK']}, FLAG {counts['FLAG']}, "
-          f"with clear-cut fixes {counts['clear-cut fixes']}")
+          f"REVIEWED {counts['REVIEWED']}, with clear-cut fixes {counts['clear-cut fixes']}")
     print(f"report: {args.report}")
     return 0
 

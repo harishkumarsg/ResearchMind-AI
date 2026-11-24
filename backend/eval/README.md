@@ -1,10 +1,10 @@
 # Retrieval evaluation set (draft)
 
-> **Status: AI-drafted; gold pages checked automatically against the PDF text
-> (check_questions.py); flagged items reviewed by the author: pending.**
-> Every question, gold page and answer hint was drafted by Claude Code
-> (`"drafted_by": "claude-code"`). Until the author has decided the items flagged in
-> `check_report.csv`, do not report numbers computed from the set.
+> **Status: AI-drafted by Claude Code. Gold pages checked automatically against the PDF
+> text (check_questions.py). The 5 flagged items were decided by the author on Claude's
+> recommendation, after Claude Code read the relevant pages. Not every item was re-read
+> by the author; the check confirms answers are on their gold pages but cannot judge
+> question wording.**
 
 ## Files
 
@@ -14,14 +14,16 @@
 | `questions.jsonl` | Working set, 64 items: the draft plus the edits below and `cross-09`. |
 | `questions_dev.jsonl` / `questions_test.jsonl` | 38 / 26 split of `questions.jsonl` by `split_questions.py` (stratified by type, seed 20261124, `cross-09` pinned to dev). Tune on dev only; the test file is for the final reported numbers. |
 | `check_questions.py` | Offline check of every item against the PDF text (page existence and length, reference pages, hint support, BM25 page ranking, broad gold lists, unanswerable items, library-question routing). Run from `backend/`: `python eval/check_questions.py`. |
-| `check_report.csv` | Its output for `questions.jsonl`: `id, status (OK/FLAG), reasons, current_gold, suggested_gold`. |
+| `check_report.csv` | Its output for `questions.jsonl`: `id, status, reasons, current_gold, suggested_gold`. Status is `OK`, `FLAG` (open) or `REVIEWED` (still flagged, but the item has a `review_note` recording the author's decision). |
 
 Edits in `questions.jsonl` are listed in each item's `edits` field: ten questions
 (`lmv-02/03/04/06/07/08/10`, `real-01/06/09`) now name the paper or method, and `cross-09`
 was added. It has `"gold_level": "paper"`: any retrieved page from a gold paper counts as
 a hit, and the listed page is only the evidence that the paper uses a VLM. The check
 found no clear-cut gold fix (no gold page is short or a reference page, and every broad
-list needs a judgement), so no gold page was changed automatically.
+list needs a judgement), so no gold page was changed automatically. The five flagged
+items (`real-03`, `vlmaoi-02`, `cross-04`, `cross-07`, `cross-08`) were then decided by
+the author; each carries `decided_by` and a one-line `review_note`.
 
 This is a labelled question set for evaluating ResearchMind's retrieval: for each question,
 does retrieval return chunks from the right paper and page?
