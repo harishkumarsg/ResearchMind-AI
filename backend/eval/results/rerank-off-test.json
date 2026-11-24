@@ -1,0 +1,5730 @@
+{
+ "run_name": "rerank-off-test",
+ "variant": "rerank-off",
+ "started_utc": "2026-11-24 18:16 UTC",
+ "questions_file": "eval/questions_test.jsonl",
+ "collection": "researchmind_eval",
+ "owner_id": "39c4c1cf-f94b-5bee-be4b-fff5e08ee06d",
+ "settings": {
+  "variant_description": "Production with RERANK_ENABLED=false: vector top 5, top 4, _select_evidence. Computed from the baseline's cache.",
+  "rerank_stage_note": "With reranking off the rerank stage is the vector top 5 unchanged, so its recall@8 is n/a.",
+  "vector_store": "qdrant embedded local mode (exact search), eval/cache/qdrant",
+  "index": "full",
+  "embed_model": "voyage-4",
+  "rerank_model": "rerank-3",
+  "search_limit": 8,
+  "rerank_mode": "off",
+  "max_rerank": 5,
+  "rerank_doc_chars": 400,
+  "top_chunks": 4,
+  "max_context_chars": 4000,
+  "rerank_enabled": false,
+  "keep_live_hits": "not called (needs Postgres); all eval papers are indexed, so it keeps every hit",
+  "summary": [
+   "Pages: PyMuPDF physical pages from 1, clean_text per page, pages under 100 chars skipped; RecursiveCharacterTextSplitter 1500 chars, 300 overlap; payload paper = file name.",
+   "Embeddings: Voyage voyage-4, input_type document for chunks and query for the question; Qdrant 1024-d cosine.",
+   "Search: query_points limit 8, owner_id filter; keep_live_hits skipped (would keep every hit here).",
+   "Rerank off (RERANK_ENABLED=false): rerank_results keeps the vector top 5 unchanged; no rerank call.",
+   "Vector search: Qdrant embedded local mode (exact search). At this collection size Qdrant Cloud generally searches exactly too, so rankings should match; not verified against Cloud.",
+   "Context: top 4 after rerank, _select_evidence within 4000 chars."
+  ]
+ },
+ "index": {
+  "2503.14162v2.pdf": {
+   "pages": 6,
+   "chunks": 28,
+   "indexed_pages": 6,
+   "action": "skipped"
+  },
+  "2602.09850v2.pdf": {
+   "pages": 28,
+   "chunks": 89,
+   "indexed_pages": 28,
+   "action": "skipped"
+  },
+  "2603.27179v1.pdf": {
+   "pages": 15,
+   "chunks": 57,
+   "indexed_pages": 15,
+   "action": "skipped"
+  },
+  "ETASR_18859.pdf": {
+   "pages": 7,
+   "chunks": 27,
+   "indexed_pages": 7,
+   "action": "skipped"
+  },
+  "ssrn-5745634.pdf": {
+   "pages": 19,
+   "chunks": 36,
+   "indexed_pages": 19,
+   "action": "skipped"
+  }
+ },
+ "counts": {
+  "questions": 26,
+  "answerable": 24,
+  "unanswerable": 2,
+  "library_routed": 0
+ },
+ "metrics": {
+  "vector": {
+   "all": {
+    "n": 24,
+    "recall@1": 0.7083333333333334,
+    "recall@3": 0.875,
+    "recall@5": 0.9166666666666666,
+    "recall@8": 0.9583333333333334,
+    "mrr@5": 0.795138888888889,
+    "mrr": 0.8010912698412698,
+    "paper_hit@5": 1.0,
+    "gold_paper_share": 0.7916666666666666
+   },
+   "cross-paper": {
+    "n": 4,
+    "recall@1": 0.75,
+    "recall@3": 1.0,
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr@5": 0.875,
+    "mrr": 0.875,
+    "paper_hit@5": 1.0,
+    "gold_paper_share": 0.7916666666666666
+   },
+   "factual": {
+    "n": 6,
+    "recall@1": 0.5,
+    "recall@3": 0.6666666666666666,
+    "recall@5": 0.8333333333333334,
+    "recall@8": 1.0,
+    "mrr@5": 0.625,
+    "mrr": 0.6488095238095238,
+    "paper_hit@5": 1.0
+   },
+   "limitation": {
+    "n": 4,
+    "recall@1": 0.5,
+    "recall@3": 0.75,
+    "recall@5": 0.75,
+    "recall@8": 0.75,
+    "mrr@5": 0.5833333333333333,
+    "mrr": 0.5833333333333333,
+    "paper_hit@5": 1.0
+   },
+   "method": {
+    "n": 6,
+    "recall@1": 1.0,
+    "recall@3": 1.0,
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr@5": 1.0,
+    "mrr": 1.0,
+    "paper_hit@5": 1.0
+   },
+   "results": {
+    "n": 4,
+    "recall@1": 0.75,
+    "recall@3": 1.0,
+    "recall@5": 1.0,
+    "recall@8": 1.0,
+    "mrr@5": 0.875,
+    "mrr": 0.875,
+    "paper_hit@5": 1.0
+   }
+  },
+  "rerank": {
+   "all": {
+    "n": 24,
+    "recall@1": 0.7083333333333334,
+    "recall@3": 0.875,
+    "recall@5": 0.9166666666666666,
+    "recall@8": null,
+    "mrr@5": 0.795138888888889,
+    "mrr": 0.795138888888889,
+    "paper_hit@5": 1.0,
+    "gold_paper_share": 0.6666666666666666
+   },
+   "cross-paper": {
+    "n": 4,
+    "recall@1": 0.75,
+    "recall@3": 1.0,
+    "recall@5": 1.0,
+    "recall@8": null,
+    "mrr@5": 0.875,
+    "mrr": 0.875,
+    "paper_hit@5": 1.0,
+    "gold_paper_share": 0.6666666666666666
+   },
+   "factual": {
+    "n": 6,
+    "recall@1": 0.5,
+    "recall@3": 0.6666666666666666,
+    "recall@5": 0.8333333333333334,
+    "recall@8": null,
+    "mrr@5": 0.625,
+    "mrr": 0.625,
+    "paper_hit@5": 1.0
+   },
+   "limitation": {
+    "n": 4,
+    "recall@1": 0.5,
+    "recall@3": 0.75,
+    "recall@5": 0.75,
+    "recall@8": null,
+    "mrr@5": 0.5833333333333333,
+    "mrr": 0.5833333333333333,
+    "paper_hit@5": 1.0
+   },
+   "method": {
+    "n": 6,
+    "recall@1": 1.0,
+    "recall@3": 1.0,
+    "recall@5": 1.0,
+    "recall@8": null,
+    "mrr@5": 1.0,
+    "mrr": 1.0,
+    "paper_hit@5": 1.0
+   },
+   "results": {
+    "n": 4,
+    "recall@1": 0.75,
+    "recall@3": 1.0,
+    "recall@5": 1.0,
+    "recall@8": null,
+    "mrr@5": 0.875,
+    "mrr": 0.875,
+    "paper_hit@5": 1.0
+   }
+  },
+  "context": {
+   "all": {
+    "hit": 0.875,
+    "passages": 2.6666666666666665
+   },
+   "cross-paper": {
+    "hit": 1.0,
+    "passages": 2.5
+   },
+   "factual": {
+    "hit": 0.8333333333333334,
+    "passages": 2.3333333333333335
+   },
+   "limitation": {
+    "hit": 0.75,
+    "passages": 3.25
+   },
+   "method": {
+    "hit": 1.0,
+    "passages": 2.6666666666666665
+   },
+   "results": {
+    "hit": 0.75,
+    "passages": 2.75
+   }
+  }
+ },
+ "cross_paper": [
+  {
+   "id": "cross-01",
+   "gold_papers": 2,
+   "vector_share": 0.5,
+   "rerank_share": 0.5,
+   "context_share": 0.5
+  },
+  {
+   "id": "cross-03",
+   "gold_papers": 2,
+   "vector_share": 1.0,
+   "rerank_share": 1.0,
+   "context_share": 0.5
+  },
+  {
+   "id": "cross-06",
+   "gold_papers": 2,
+   "vector_share": 1.0,
+   "rerank_share": 0.5,
+   "context_share": 0.5
+  },
+  {
+   "id": "cross-07",
+   "gold_papers": 3,
+   "vector_share": 0.6666666666666666,
+   "rerank_share": 0.6666666666666666,
+   "context_share": 0.6666666666666666
+  }
+ ],
+ "unanswerable": {
+  "items": [
+   {
+    "id": "unans-04",
+    "top_rerank_score": null,
+    "top_vector_score": 0.5377,
+    "top_page": "2602.09850v2.pdf p9",
+    "top_page_class": "body"
+   },
+   {
+    "id": "unans-05",
+    "top_rerank_score": null,
+    "top_vector_score": 0.3851,
+    "top_page": "ETASR_18859.pdf p6",
+    "top_page_class": "mixed"
+   }
+  ],
+  "answerable_top_rerank": null,
+  "answerable_top_vector": {
+   "n": 24,
+   "min": 0.3546,
+   "p25": 0.487,
+   "median": 0.53905,
+   "p75": 0.6526,
+   "max": 0.7646
+  },
+  "answerable_below_max_unanswerable": 0
+ },
+ "page_class_share": {
+  "vector": {
+   "body": 0.8990384615384616,
+   "mixed": 0.07692307692307693,
+   "reference": 0.02403846153846154
+  },
+  "rerank": {
+   "body": 0.9230769230769231,
+   "mixed": 0.06923076923076923,
+   "reference": 0.007692307692307693
+  },
+  "context": {
+   "body": 0.9428571428571428,
+   "mixed": 0.05714285714285714
+  }
+ },
+ "worst_misses": [
+  {
+   "id": "eiad-09",
+   "type": "limitation",
+   "question": "What do the EIAD authors say still needs improving in their work?",
+   "gold": "2503.14162v2.pdf p6",
+   "vector_first_hit": null,
+   "rerank_first_hit": null,
+   "rerank": [
+    {
+     "rank": 1,
+     "paper": "2503.14162v2.pdf",
+     "page": 1,
+     "chunk_id": 4,
+     "page_class": "body",
+     "vector_rank": 1,
+     "rerank_score": null
+    },
+    {
+     "rank": 2,
+     "paper": "2602.09850v2.pdf",
+     "page": 18,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 2,
+     "rerank_score": null
+    },
+    {
+     "rank": 3,
+     "paper": "2602.09850v2.pdf",
+     "page": 22,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 3,
+     "rerank_score": null
+    },
+    {
+     "rank": 4,
+     "paper": "2503.14162v2.pdf",
+     "page": 1,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 4,
+     "rerank_score": null
+    },
+    {
+     "rank": 5,
+     "paper": "2602.09850v2.pdf",
+     "page": 22,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 5,
+     "rerank_score": null
+    }
+   ],
+   "vector": [
+    {
+     "rank": 1,
+     "paper": "2503.14162v2.pdf",
+     "page": 1,
+     "chunk_id": 4,
+     "page_class": "body",
+     "score": 0.3546
+    },
+    {
+     "rank": 2,
+     "paper": "2602.09850v2.pdf",
+     "page": 18,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.3039
+    },
+    {
+     "rank": 3,
+     "paper": "2602.09850v2.pdf",
+     "page": 22,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.2839
+    },
+    {
+     "rank": 4,
+     "paper": "2503.14162v2.pdf",
+     "page": 1,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.2792
+    },
+    {
+     "rank": 5,
+     "paper": "2602.09850v2.pdf",
+     "page": 22,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.2755
+    },
+    {
+     "rank": 6,
+     "paper": "2503.14162v2.pdf",
+     "page": 3,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.2735
+    },
+    {
+     "rank": 7,
+     "paper": "ETASR_18859.pdf",
+     "page": 6,
+     "chunk_id": 2,
+     "page_class": "mixed",
+     "score": 0.2702
+    },
+    {
+     "rank": 8,
+     "paper": "2603.27179v1.pdf",
+     "page": 14,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.2672
+    }
+   ]
+  },
+  {
+   "id": "real-02",
+   "type": "factual",
+   "question": "How large is the training set used for CGRO, and what kind of labels does it carry?",
+   "gold": "2603.27179v1.pdf p6",
+   "vector_first_hit": 7,
+   "rerank_first_hit": null,
+   "rerank": [
+    {
+     "rank": 1,
+     "paper": "2503.14162v2.pdf",
+     "page": 4,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 1,
+     "rerank_score": null
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 13,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 2,
+     "rerank_score": null
+    },
+    {
+     "rank": 3,
+     "paper": "2503.14162v2.pdf",
+     "page": 3,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 3,
+     "rerank_score": null
+    },
+    {
+     "rank": 4,
+     "paper": "ETASR_18859.pdf",
+     "page": 3,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 4,
+     "rerank_score": null
+    },
+    {
+     "rank": 5,
+     "paper": "2603.27179v1.pdf",
+     "page": 15,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 5,
+     "rerank_score": null
+    }
+   ],
+   "vector": [
+    {
+     "rank": 1,
+     "paper": "2503.14162v2.pdf",
+     "page": 4,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.3698
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 13,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.3678
+    },
+    {
+     "rank": 3,
+     "paper": "2503.14162v2.pdf",
+     "page": 3,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.3592
+    },
+    {
+     "rank": 4,
+     "paper": "ETASR_18859.pdf",
+     "page": 3,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.347
+    },
+    {
+     "rank": 5,
+     "paper": "2603.27179v1.pdf",
+     "page": 15,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.342
+    },
+    {
+     "rank": 6,
+     "paper": "2503.14162v2.pdf",
+     "page": 3,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.3377
+    },
+    {
+     "rank": 7,
+     "paper": "2603.27179v1.pdf",
+     "page": 6,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.3243
+    },
+    {
+     "rank": 8,
+     "paper": "2603.27179v1.pdf",
+     "page": 7,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.3227
+    }
+   ]
+  },
+  {
+   "id": "reasoniad-01",
+   "type": "factual",
+   "question": "Which encoder does Reason-IAD use to retrieve category knowledge, and how many categories does it retrieve per image?",
+   "gold": "2602.09850v2.pdf p7,14",
+   "vector_first_hit": 4,
+   "rerank_first_hit": 4,
+   "rerank": [
+    {
+     "rank": 1,
+     "paper": "2602.09850v2.pdf",
+     "page": 15,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 1,
+     "rerank_score": null
+    },
+    {
+     "rank": 2,
+     "paper": "2602.09850v2.pdf",
+     "page": 5,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 2,
+     "rerank_score": null
+    },
+    {
+     "rank": 3,
+     "paper": "2602.09850v2.pdf",
+     "page": 4,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 3,
+     "rerank_score": null
+    },
+    {
+     "rank": 4,
+     "paper": "2602.09850v2.pdf",
+     "page": 7,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 4,
+     "rerank_score": null
+    },
+    {
+     "rank": 5,
+     "paper": "2602.09850v2.pdf",
+     "page": 4,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 5,
+     "rerank_score": null
+    }
+   ],
+   "vector": [
+    {
+     "rank": 1,
+     "paper": "2602.09850v2.pdf",
+     "page": 15,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.6526
+    },
+    {
+     "rank": 2,
+     "paper": "2602.09850v2.pdf",
+     "page": 5,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.6219
+    },
+    {
+     "rank": 3,
+     "paper": "2602.09850v2.pdf",
+     "page": 4,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.5469
+    },
+    {
+     "rank": 4,
+     "paper": "2602.09850v2.pdf",
+     "page": 7,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.5323
+    },
+    {
+     "rank": 5,
+     "paper": "2602.09850v2.pdf",
+     "page": 4,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.5273
+    },
+    {
+     "rank": 6,
+     "paper": "2602.09850v2.pdf",
+     "page": 4,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.505
+    },
+    {
+     "rank": 7,
+     "paper": "2602.09850v2.pdf",
+     "page": 14,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.4993
+    },
+    {
+     "rank": 8,
+     "paper": "2602.09850v2.pdf",
+     "page": 5,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.4877
+    }
+   ]
+  },
+  {
+   "id": "real-09",
+   "type": "limitation",
+   "question": "What limitations do the authors of the ReAL/CGRO paper state?",
+   "gold": "2603.27179v1.pdf p15",
+   "vector_first_hit": 3,
+   "rerank_first_hit": 3,
+   "rerank": [
+    {
+     "rank": 1,
+     "paper": "2602.09850v2.pdf",
+     "page": 22,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 1,
+     "rerank_score": null
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 12,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 2,
+     "rerank_score": null
+    },
+    {
+     "rank": 3,
+     "paper": "2603.27179v1.pdf",
+     "page": 15,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 3,
+     "rerank_score": null
+    },
+    {
+     "rank": 4,
+     "paper": "2602.09850v2.pdf",
+     "page": 22,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 4,
+     "rerank_score": null
+    },
+    {
+     "rank": 5,
+     "paper": "2603.27179v1.pdf",
+     "page": 7,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 5,
+     "rerank_score": null
+    }
+   ],
+   "vector": [
+    {
+     "rank": 1,
+     "paper": "2602.09850v2.pdf",
+     "page": 22,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.3852
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 12,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.3788
+    },
+    {
+     "rank": 3,
+     "paper": "2603.27179v1.pdf",
+     "page": 15,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.3723
+    },
+    {
+     "rank": 4,
+     "paper": "2602.09850v2.pdf",
+     "page": 22,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.369
+    },
+    {
+     "rank": 5,
+     "paper": "2603.27179v1.pdf",
+     "page": 7,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.3603
+    },
+    {
+     "rank": 6,
+     "paper": "2603.27179v1.pdf",
+     "page": 12,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.3555
+    },
+    {
+     "rank": 7,
+     "paper": "2603.27179v1.pdf",
+     "page": 8,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.3434
+    },
+    {
+     "rank": 8,
+     "paper": "2603.27179v1.pdf",
+     "page": 15,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.3425
+    }
+   ]
+  },
+  {
+   "id": "real-08",
+   "type": "results",
+   "question": "In the zero-shot comparison, which model has a higher average image-level accuracy than Qwen2.5-VL-7B with CGRO?",
+   "gold": "2603.27179v1.pdf p6,7",
+   "vector_first_hit": 2,
+   "rerank_first_hit": 2,
+   "rerank": [
+    {
+     "rank": 1,
+     "paper": "2603.27179v1.pdf",
+     "page": 15,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 1,
+     "rerank_score": null
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 7,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 2,
+     "rerank_score": null
+    },
+    {
+     "rank": 3,
+     "paper": "2603.27179v1.pdf",
+     "page": 7,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 3,
+     "rerank_score": null
+    },
+    {
+     "rank": 4,
+     "paper": "2602.09850v2.pdf",
+     "page": 7,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 4,
+     "rerank_score": null
+    },
+    {
+     "rank": 5,
+     "paper": "2603.27179v1.pdf",
+     "page": 7,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 5,
+     "rerank_score": null
+    }
+   ],
+   "vector": [
+    {
+     "rank": 1,
+     "paper": "2603.27179v1.pdf",
+     "page": 15,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.6865
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 7,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.6819
+    },
+    {
+     "rank": 3,
+     "paper": "2603.27179v1.pdf",
+     "page": 7,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.6738
+    },
+    {
+     "rank": 4,
+     "paper": "2602.09850v2.pdf",
+     "page": 7,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.6733
+    },
+    {
+     "rank": 5,
+     "paper": "2603.27179v1.pdf",
+     "page": 7,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.667
+    },
+    {
+     "rank": 6,
+     "paper": "2603.27179v1.pdf",
+     "page": 7,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.6661
+    },
+    {
+     "rank": 7,
+     "paper": "2602.09850v2.pdf",
+     "page": 8,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.6651
+    },
+    {
+     "rank": 8,
+     "paper": "2602.09850v2.pdf",
+     "page": 6,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.6505
+    }
+   ]
+  }
+ ],
+ "latency_ms": {
+  "query_embed": {
+   "median": 326.0,
+   "p95": 1035.2,
+   "max": 1299.3
+  },
+  "vector_search": {
+   "median": 5.6,
+   "p95": 7.0,
+   "max": 7.1
+  },
+  "rerank": null
+ },
+ "timing": {
+  "total_s": 10.2,
+  "index_s": 0.2,
+  "questions_s": 0.6,
+  "voyage_wait_s": 0.0
+ },
+ "voyage_calls": {
+  "embed_cached": 26
+ },
+ "versions": {
+  "python": "3.11.9",
+  "voyageai": "0.5.0",
+  "qdrant-client": "1.18.0",
+  "pymupdf": "2.0"
+ },
+ "items": [
+  {
+   "id": "eiad-03",
+   "type": "factual",
+   "question": "In total, how many question-answer items does DDQA contain across all its tasks?",
+   "gold": [
+    {
+     "paper": "2503.14162v2.pdf",
+     "pages": [
+      3
+     ]
+    }
+   ],
+   "gold_level": "page",
+   "library_question": false,
+   "vector": [
+    {
+     "rank": 1,
+     "paper": "2503.14162v2.pdf",
+     "page": 3,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.4974
+    },
+    {
+     "rank": 2,
+     "paper": "2503.14162v2.pdf",
+     "page": 3,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.4941
+    },
+    {
+     "rank": 3,
+     "paper": "2602.09850v2.pdf",
+     "page": 14,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.4412
+    },
+    {
+     "rank": 4,
+     "paper": "2503.14162v2.pdf",
+     "page": 2,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.4036
+    },
+    {
+     "rank": 5,
+     "paper": "2503.14162v2.pdf",
+     "page": 3,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.3988
+    },
+    {
+     "rank": 6,
+     "paper": "2503.14162v2.pdf",
+     "page": 2,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.3959
+    },
+    {
+     "rank": 7,
+     "paper": "2503.14162v2.pdf",
+     "page": 3,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.3931
+    },
+    {
+     "rank": 8,
+     "paper": "2603.27179v1.pdf",
+     "page": 7,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.3884
+    }
+   ],
+   "rerank": [
+    {
+     "rank": 1,
+     "paper": "2503.14162v2.pdf",
+     "page": 3,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 1,
+     "rerank_score": null
+    },
+    {
+     "rank": 2,
+     "paper": "2503.14162v2.pdf",
+     "page": 3,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 2,
+     "rerank_score": null
+    },
+    {
+     "rank": 3,
+     "paper": "2602.09850v2.pdf",
+     "page": 14,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 3,
+     "rerank_score": null
+    },
+    {
+     "rank": 4,
+     "paper": "2503.14162v2.pdf",
+     "page": 2,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 4,
+     "rerank_score": null
+    },
+    {
+     "rank": 5,
+     "paper": "2503.14162v2.pdf",
+     "page": 3,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 5,
+     "rerank_score": null
+    }
+   ],
+   "context": [
+    {
+     "rank": 1,
+     "paper": "2503.14162v2.pdf",
+     "page": 3,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 1
+    },
+    {
+     "rank": 2,
+     "paper": "2602.09850v2.pdf",
+     "page": 14,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 3
+    }
+   ],
+   "latency_ms": {
+    "query_embed": 1026.9,
+    "query_embed_cached": true,
+    "vector_search": 6.0,
+    "rerank": null,
+    "rerank_cached": null
+   },
+   "metrics": {
+    "vector": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": true,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1
+    },
+    "rerank": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": null,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1
+    },
+    "context": {
+     "hit": true,
+     "passages": 2
+    }
+   }
+  },
+  {
+   "id": "eiad-06",
+   "type": "method",
+   "question": "Besides the DDQA source datasets, which extra datasets supplied mask annotations for training EIAD's localization module?",
+   "gold": [
+    {
+     "paper": "2503.14162v2.pdf",
+     "pages": [
+      4
+     ]
+    }
+   ],
+   "gold_level": "page",
+   "library_question": false,
+   "vector": [
+    {
+     "rank": 1,
+     "paper": "2503.14162v2.pdf",
+     "page": 4,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.5828
+    },
+    {
+     "rank": 2,
+     "paper": "2503.14162v2.pdf",
+     "page": 4,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.566
+    },
+    {
+     "rank": 3,
+     "paper": "2603.27179v1.pdf",
+     "page": 2,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.5405
+    },
+    {
+     "rank": 4,
+     "paper": "2503.14162v2.pdf",
+     "page": 5,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.5333
+    },
+    {
+     "rank": 5,
+     "paper": "2503.14162v2.pdf",
+     "page": 3,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.5215
+    },
+    {
+     "rank": 6,
+     "paper": "2503.14162v2.pdf",
+     "page": 6,
+     "chunk_id": 4,
+     "page_class": "mixed",
+     "score": 0.5125
+    },
+    {
+     "rank": 7,
+     "paper": "2503.14162v2.pdf",
+     "page": 2,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.508
+    },
+    {
+     "rank": 8,
+     "paper": "2602.09850v2.pdf",
+     "page": 13,
+     "chunk_id": 2,
+     "page_class": "reference",
+     "score": 0.4963
+    }
+   ],
+   "rerank": [
+    {
+     "rank": 1,
+     "paper": "2503.14162v2.pdf",
+     "page": 4,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 1,
+     "rerank_score": null
+    },
+    {
+     "rank": 2,
+     "paper": "2503.14162v2.pdf",
+     "page": 4,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 2,
+     "rerank_score": null
+    },
+    {
+     "rank": 3,
+     "paper": "2603.27179v1.pdf",
+     "page": 2,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 3,
+     "rerank_score": null
+    },
+    {
+     "rank": 4,
+     "paper": "2503.14162v2.pdf",
+     "page": 5,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 4,
+     "rerank_score": null
+    },
+    {
+     "rank": 5,
+     "paper": "2503.14162v2.pdf",
+     "page": 3,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 5,
+     "rerank_score": null
+    }
+   ],
+   "context": [
+    {
+     "rank": 1,
+     "paper": "2503.14162v2.pdf",
+     "page": 4,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 1
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 2,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 3
+    }
+   ],
+   "latency_ms": {
+    "query_embed": 1035.2,
+    "query_embed_cached": true,
+    "vector_search": 3.5,
+    "rerank": null,
+    "rerank_cached": null
+   },
+   "metrics": {
+    "vector": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": true,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1
+    },
+    "rerank": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": null,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1
+    },
+    "context": {
+     "hit": true,
+     "passages": 2
+    }
+   }
+  },
+  {
+   "id": "eiad-07",
+   "type": "results",
+   "question": "What zero-shot pixel-level AUROC does EIAD obtain on MVTec AD and on VisA?",
+   "gold": [
+    {
+     "paper": "2503.14162v2.pdf",
+     "pages": [
+      5,
+      6
+     ]
+    }
+   ],
+   "gold_level": "page",
+   "library_question": false,
+   "vector": [
+    {
+     "rank": 1,
+     "paper": "2503.14162v2.pdf",
+     "page": 5,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.6246
+    },
+    {
+     "rank": 2,
+     "paper": "2503.14162v2.pdf",
+     "page": 5,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.5782
+    },
+    {
+     "rank": 3,
+     "paper": "2503.14162v2.pdf",
+     "page": 5,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.567
+    },
+    {
+     "rank": 4,
+     "paper": "2503.14162v2.pdf",
+     "page": 6,
+     "chunk_id": 0,
+     "page_class": "mixed",
+     "score": 0.5617
+    },
+    {
+     "rank": 5,
+     "paper": "2603.27179v1.pdf",
+     "page": 15,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.551
+    },
+    {
+     "rank": 6,
+     "paper": "2603.27179v1.pdf",
+     "page": 7,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.5102
+    },
+    {
+     "rank": 7,
+     "paper": "2503.14162v2.pdf",
+     "page": 5,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.5074
+    },
+    {
+     "rank": 8,
+     "paper": "2603.27179v1.pdf",
+     "page": 8,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.4853
+    }
+   ],
+   "rerank": [
+    {
+     "rank": 1,
+     "paper": "2503.14162v2.pdf",
+     "page": 5,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 1,
+     "rerank_score": null
+    },
+    {
+     "rank": 2,
+     "paper": "2503.14162v2.pdf",
+     "page": 5,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 2,
+     "rerank_score": null
+    },
+    {
+     "rank": 3,
+     "paper": "2503.14162v2.pdf",
+     "page": 5,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 3,
+     "rerank_score": null
+    },
+    {
+     "rank": 4,
+     "paper": "2503.14162v2.pdf",
+     "page": 6,
+     "chunk_id": 0,
+     "page_class": "mixed",
+     "vector_rank": 4,
+     "rerank_score": null
+    },
+    {
+     "rank": 5,
+     "paper": "2603.27179v1.pdf",
+     "page": 15,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 5,
+     "rerank_score": null
+    }
+   ],
+   "context": [
+    {
+     "rank": 1,
+     "paper": "2503.14162v2.pdf",
+     "page": 5,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 1
+    },
+    {
+     "rank": 2,
+     "paper": "2503.14162v2.pdf",
+     "page": 5,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 2
+    },
+    {
+     "rank": 3,
+     "paper": "2503.14162v2.pdf",
+     "page": 5,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 3
+    }
+   ],
+   "latency_ms": {
+    "query_embed": 306.5,
+    "query_embed_cached": true,
+    "vector_search": 5.6,
+    "rerank": null,
+    "rerank_cached": null
+   },
+   "metrics": {
+    "vector": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": true,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1
+    },
+    "rerank": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": null,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1
+    },
+    "context": {
+     "hit": true,
+     "passages": 3
+    }
+   }
+  },
+  {
+   "id": "eiad-09",
+   "type": "limitation",
+   "question": "What do the EIAD authors say still needs improving in their work?",
+   "gold": [
+    {
+     "paper": "2503.14162v2.pdf",
+     "pages": [
+      6
+     ]
+    }
+   ],
+   "gold_level": "page",
+   "library_question": false,
+   "vector": [
+    {
+     "rank": 1,
+     "paper": "2503.14162v2.pdf",
+     "page": 1,
+     "chunk_id": 4,
+     "page_class": "body",
+     "score": 0.3546
+    },
+    {
+     "rank": 2,
+     "paper": "2602.09850v2.pdf",
+     "page": 18,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.3039
+    },
+    {
+     "rank": 3,
+     "paper": "2602.09850v2.pdf",
+     "page": 22,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.2839
+    },
+    {
+     "rank": 4,
+     "paper": "2503.14162v2.pdf",
+     "page": 1,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.2792
+    },
+    {
+     "rank": 5,
+     "paper": "2602.09850v2.pdf",
+     "page": 22,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.2755
+    },
+    {
+     "rank": 6,
+     "paper": "2503.14162v2.pdf",
+     "page": 3,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.2735
+    },
+    {
+     "rank": 7,
+     "paper": "ETASR_18859.pdf",
+     "page": 6,
+     "chunk_id": 2,
+     "page_class": "mixed",
+     "score": 0.2702
+    },
+    {
+     "rank": 8,
+     "paper": "2603.27179v1.pdf",
+     "page": 14,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.2672
+    }
+   ],
+   "rerank": [
+    {
+     "rank": 1,
+     "paper": "2503.14162v2.pdf",
+     "page": 1,
+     "chunk_id": 4,
+     "page_class": "body",
+     "vector_rank": 1,
+     "rerank_score": null
+    },
+    {
+     "rank": 2,
+     "paper": "2602.09850v2.pdf",
+     "page": 18,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 2,
+     "rerank_score": null
+    },
+    {
+     "rank": 3,
+     "paper": "2602.09850v2.pdf",
+     "page": 22,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 3,
+     "rerank_score": null
+    },
+    {
+     "rank": 4,
+     "paper": "2503.14162v2.pdf",
+     "page": 1,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 4,
+     "rerank_score": null
+    },
+    {
+     "rank": 5,
+     "paper": "2602.09850v2.pdf",
+     "page": 22,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 5,
+     "rerank_score": null
+    }
+   ],
+   "context": [
+    {
+     "rank": 1,
+     "paper": "2503.14162v2.pdf",
+     "page": 1,
+     "chunk_id": 4,
+     "page_class": "body",
+     "vector_rank": 1
+    },
+    {
+     "rank": 2,
+     "paper": "2602.09850v2.pdf",
+     "page": 18,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 2
+    },
+    {
+     "rank": 3,
+     "paper": "2602.09850v2.pdf",
+     "page": 22,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 3
+    },
+    {
+     "rank": 4,
+     "paper": "2503.14162v2.pdf",
+     "page": 1,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 4
+    }
+   ],
+   "latency_ms": {
+    "query_embed": 314.0,
+    "query_embed_cached": true,
+    "vector_search": 4.6,
+    "rerank": null,
+    "rerank_cached": null
+   },
+   "metrics": {
+    "vector": {
+     "recall@1": false,
+     "recall@3": false,
+     "recall@5": false,
+     "recall@8": false,
+     "mrr@5": 0.0,
+     "mrr": 0.0,
+     "paper_hit@5": true,
+     "first_hit_rank": null
+    },
+    "rerank": {
+     "recall@1": false,
+     "recall@3": false,
+     "recall@5": false,
+     "recall@8": null,
+     "mrr@5": 0.0,
+     "mrr": 0.0,
+     "paper_hit@5": true,
+     "first_hit_rank": null
+    },
+    "context": {
+     "hit": false,
+     "passages": 4
+    }
+   }
+  },
+  {
+   "id": "reasoniad-01",
+   "type": "factual",
+   "question": "Which encoder does Reason-IAD use to retrieve category knowledge, and how many categories does it retrieve per image?",
+   "gold": [
+    {
+     "paper": "2602.09850v2.pdf",
+     "pages": [
+      7,
+      14
+     ]
+    }
+   ],
+   "gold_level": "page",
+   "library_question": false,
+   "vector": [
+    {
+     "rank": 1,
+     "paper": "2602.09850v2.pdf",
+     "page": 15,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.6526
+    },
+    {
+     "rank": 2,
+     "paper": "2602.09850v2.pdf",
+     "page": 5,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.6219
+    },
+    {
+     "rank": 3,
+     "paper": "2602.09850v2.pdf",
+     "page": 4,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.5469
+    },
+    {
+     "rank": 4,
+     "paper": "2602.09850v2.pdf",
+     "page": 7,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.5323
+    },
+    {
+     "rank": 5,
+     "paper": "2602.09850v2.pdf",
+     "page": 4,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.5273
+    },
+    {
+     "rank": 6,
+     "paper": "2602.09850v2.pdf",
+     "page": 4,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.505
+    },
+    {
+     "rank": 7,
+     "paper": "2602.09850v2.pdf",
+     "page": 14,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.4993
+    },
+    {
+     "rank": 8,
+     "paper": "2602.09850v2.pdf",
+     "page": 5,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.4877
+    }
+   ],
+   "rerank": [
+    {
+     "rank": 1,
+     "paper": "2602.09850v2.pdf",
+     "page": 15,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 1,
+     "rerank_score": null
+    },
+    {
+     "rank": 2,
+     "paper": "2602.09850v2.pdf",
+     "page": 5,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 2,
+     "rerank_score": null
+    },
+    {
+     "rank": 3,
+     "paper": "2602.09850v2.pdf",
+     "page": 4,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 3,
+     "rerank_score": null
+    },
+    {
+     "rank": 4,
+     "paper": "2602.09850v2.pdf",
+     "page": 7,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 4,
+     "rerank_score": null
+    },
+    {
+     "rank": 5,
+     "paper": "2602.09850v2.pdf",
+     "page": 4,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 5,
+     "rerank_score": null
+    }
+   ],
+   "context": [
+    {
+     "rank": 1,
+     "paper": "2602.09850v2.pdf",
+     "page": 15,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 1
+    },
+    {
+     "rank": 2,
+     "paper": "2602.09850v2.pdf",
+     "page": 5,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 2
+    },
+    {
+     "rank": 3,
+     "paper": "2602.09850v2.pdf",
+     "page": 7,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 4
+    }
+   ],
+   "latency_ms": {
+    "query_embed": 322.4,
+    "query_embed_cached": true,
+    "vector_search": 4.8,
+    "rerank": null,
+    "rerank_cached": null
+   },
+   "metrics": {
+    "vector": {
+     "recall@1": false,
+     "recall@3": false,
+     "recall@5": true,
+     "recall@8": true,
+     "mrr@5": 0.25,
+     "mrr": 0.25,
+     "paper_hit@5": true,
+     "first_hit_rank": 4
+    },
+    "rerank": {
+     "recall@1": false,
+     "recall@3": false,
+     "recall@5": true,
+     "recall@8": null,
+     "mrr@5": 0.25,
+     "mrr": 0.25,
+     "paper_hit@5": true,
+     "first_hit_rank": 4
+    },
+    "context": {
+     "hit": true,
+     "passages": 3
+    }
+   }
+  },
+  {
+   "id": "reasoniad-05",
+   "type": "method",
+   "question": "How does Reason-IAD's dynamic visual injection choose which image patches to keep?",
+   "gold": [
+    {
+     "paper": "2602.09850v2.pdf",
+     "pages": [
+      6,
+      7,
+      15
+     ]
+    }
+   ],
+   "gold_level": "page",
+   "library_question": false,
+   "vector": [
+    {
+     "rank": 1,
+     "paper": "2602.09850v2.pdf",
+     "page": 6,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.619
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 12,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.4873
+    },
+    {
+     "rank": 3,
+     "paper": "2602.09850v2.pdf",
+     "page": 9,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.4832
+    },
+    {
+     "rank": 4,
+     "paper": "2602.09850v2.pdf",
+     "page": 7,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.4832
+    },
+    {
+     "rank": 5,
+     "paper": "2602.09850v2.pdf",
+     "page": 15,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.4646
+    },
+    {
+     "rank": 6,
+     "paper": "2602.09850v2.pdf",
+     "page": 6,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.4522
+    },
+    {
+     "rank": 7,
+     "paper": "2603.27179v1.pdf",
+     "page": 12,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.4327
+    },
+    {
+     "rank": 8,
+     "paper": "2603.27179v1.pdf",
+     "page": 8,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.431
+    }
+   ],
+   "rerank": [
+    {
+     "rank": 1,
+     "paper": "2602.09850v2.pdf",
+     "page": 6,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 1,
+     "rerank_score": null
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 12,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 2,
+     "rerank_score": null
+    },
+    {
+     "rank": 3,
+     "paper": "2602.09850v2.pdf",
+     "page": 9,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 3,
+     "rerank_score": null
+    },
+    {
+     "rank": 4,
+     "paper": "2602.09850v2.pdf",
+     "page": 7,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 4,
+     "rerank_score": null
+    },
+    {
+     "rank": 5,
+     "paper": "2602.09850v2.pdf",
+     "page": 15,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 5,
+     "rerank_score": null
+    }
+   ],
+   "context": [
+    {
+     "rank": 1,
+     "paper": "2602.09850v2.pdf",
+     "page": 6,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 1
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 12,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 2
+    },
+    {
+     "rank": 3,
+     "paper": "2602.09850v2.pdf",
+     "page": 9,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 3
+    }
+   ],
+   "latency_ms": {
+    "query_embed": 297.4,
+    "query_embed_cached": true,
+    "vector_search": 7.1,
+    "rerank": null,
+    "rerank_cached": null
+   },
+   "metrics": {
+    "vector": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": true,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1
+    },
+    "rerank": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": null,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1
+    },
+    "context": {
+     "hit": true,
+     "passages": 3
+    }
+   }
+  },
+  {
+   "id": "real-01",
+   "type": "factual",
+   "question": "Which base MLLM is the ReAL/CGRO framework built on, and what input resolution does it use?",
+   "gold": [
+    {
+     "paper": "2603.27179v1.pdf",
+     "pages": [
+      6
+     ]
+    }
+   ],
+   "gold_level": "page",
+   "library_question": false,
+   "vector": [
+    {
+     "rank": 1,
+     "paper": "2603.27179v1.pdf",
+     "page": 6,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.487
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 4,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.444
+    },
+    {
+     "rank": 3,
+     "paper": "2603.27179v1.pdf",
+     "page": 2,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.4391
+    },
+    {
+     "rank": 4,
+     "paper": "2603.27179v1.pdf",
+     "page": 15,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.4342
+    },
+    {
+     "rank": 5,
+     "paper": "2603.27179v1.pdf",
+     "page": 7,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.4332
+    },
+    {
+     "rank": 6,
+     "paper": "2603.27179v1.pdf",
+     "page": 8,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.4259
+    },
+    {
+     "rank": 7,
+     "paper": "2603.27179v1.pdf",
+     "page": 1,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.4258
+    },
+    {
+     "rank": 8,
+     "paper": "2603.27179v1.pdf",
+     "page": 3,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.4235
+    }
+   ],
+   "rerank": [
+    {
+     "rank": 1,
+     "paper": "2603.27179v1.pdf",
+     "page": 6,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 1,
+     "rerank_score": null
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 4,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 2,
+     "rerank_score": null
+    },
+    {
+     "rank": 3,
+     "paper": "2603.27179v1.pdf",
+     "page": 2,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 3,
+     "rerank_score": null
+    },
+    {
+     "rank": 4,
+     "paper": "2603.27179v1.pdf",
+     "page": 15,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 4,
+     "rerank_score": null
+    },
+    {
+     "rank": 5,
+     "paper": "2603.27179v1.pdf",
+     "page": 7,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 5,
+     "rerank_score": null
+    }
+   ],
+   "context": [
+    {
+     "rank": 1,
+     "paper": "2603.27179v1.pdf",
+     "page": 6,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 1
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 4,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 2
+    }
+   ],
+   "latency_ms": {
+    "query_embed": 295.9,
+    "query_embed_cached": true,
+    "vector_search": 4.5,
+    "rerank": null,
+    "rerank_cached": null
+   },
+   "metrics": {
+    "vector": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": true,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1
+    },
+    "rerank": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": null,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1
+    },
+    "context": {
+     "hit": true,
+     "passages": 2
+    }
+   }
+  },
+  {
+   "id": "real-02",
+   "type": "factual",
+   "question": "How large is the training set used for CGRO, and what kind of labels does it carry?",
+   "gold": [
+    {
+     "paper": "2603.27179v1.pdf",
+     "pages": [
+      6
+     ]
+    }
+   ],
+   "gold_level": "page",
+   "library_question": false,
+   "vector": [
+    {
+     "rank": 1,
+     "paper": "2503.14162v2.pdf",
+     "page": 4,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.3698
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 13,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.3678
+    },
+    {
+     "rank": 3,
+     "paper": "2503.14162v2.pdf",
+     "page": 3,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.3592
+    },
+    {
+     "rank": 4,
+     "paper": "ETASR_18859.pdf",
+     "page": 3,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.347
+    },
+    {
+     "rank": 5,
+     "paper": "2603.27179v1.pdf",
+     "page": 15,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.342
+    },
+    {
+     "rank": 6,
+     "paper": "2503.14162v2.pdf",
+     "page": 3,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.3377
+    },
+    {
+     "rank": 7,
+     "paper": "2603.27179v1.pdf",
+     "page": 6,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.3243
+    },
+    {
+     "rank": 8,
+     "paper": "2603.27179v1.pdf",
+     "page": 7,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.3227
+    }
+   ],
+   "rerank": [
+    {
+     "rank": 1,
+     "paper": "2503.14162v2.pdf",
+     "page": 4,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 1,
+     "rerank_score": null
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 13,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 2,
+     "rerank_score": null
+    },
+    {
+     "rank": 3,
+     "paper": "2503.14162v2.pdf",
+     "page": 3,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 3,
+     "rerank_score": null
+    },
+    {
+     "rank": 4,
+     "paper": "ETASR_18859.pdf",
+     "page": 3,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 4,
+     "rerank_score": null
+    },
+    {
+     "rank": 5,
+     "paper": "2603.27179v1.pdf",
+     "page": 15,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 5,
+     "rerank_score": null
+    }
+   ],
+   "context": [
+    {
+     "rank": 1,
+     "paper": "2503.14162v2.pdf",
+     "page": 4,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 1
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 13,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 2
+    },
+    {
+     "rank": 3,
+     "paper": "ETASR_18859.pdf",
+     "page": 3,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 4
+    }
+   ],
+   "latency_ms": {
+    "query_embed": 306.5,
+    "query_embed_cached": true,
+    "vector_search": 5.8,
+    "rerank": null,
+    "rerank_cached": null
+   },
+   "metrics": {
+    "vector": {
+     "recall@1": false,
+     "recall@3": false,
+     "recall@5": false,
+     "recall@8": true,
+     "mrr@5": 0.0,
+     "mrr": 0.14285714285714285,
+     "paper_hit@5": true,
+     "first_hit_rank": 7
+    },
+    "rerank": {
+     "recall@1": false,
+     "recall@3": false,
+     "recall@5": false,
+     "recall@8": null,
+     "mrr@5": 0.0,
+     "mrr": 0.0,
+     "paper_hit@5": true,
+     "first_hit_rank": null
+    },
+    "context": {
+     "hit": false,
+     "passages": 3
+    }
+   }
+  },
+  {
+   "id": "real-05",
+   "type": "method",
+   "question": "Which reward terms are summed during CGRO reinforcement learning?",
+   "gold": [
+    {
+     "paper": "2603.27179v1.pdf",
+     "pages": [
+      4,
+      5
+     ]
+    }
+   ],
+   "gold_level": "page",
+   "library_question": false,
+   "vector": [
+    {
+     "rank": 1,
+     "paper": "2603.27179v1.pdf",
+     "page": 5,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.4283
+    },
+    {
+     "rank": 2,
+     "paper": "2602.09850v2.pdf",
+     "page": 6,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.4023
+    },
+    {
+     "rank": 3,
+     "paper": "2603.27179v1.pdf",
+     "page": 12,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.3577
+    },
+    {
+     "rank": 4,
+     "paper": "2603.27179v1.pdf",
+     "page": 7,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.3411
+    },
+    {
+     "rank": 5,
+     "paper": "2603.27179v1.pdf",
+     "page": 5,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.338
+    },
+    {
+     "rank": 6,
+     "paper": "2602.09850v2.pdf",
+     "page": 5,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.3371
+    },
+    {
+     "rank": 7,
+     "paper": "2603.27179v1.pdf",
+     "page": 12,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.3252
+    },
+    {
+     "rank": 8,
+     "paper": "2603.27179v1.pdf",
+     "page": 12,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.321
+    }
+   ],
+   "rerank": [
+    {
+     "rank": 1,
+     "paper": "2603.27179v1.pdf",
+     "page": 5,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 1,
+     "rerank_score": null
+    },
+    {
+     "rank": 2,
+     "paper": "2602.09850v2.pdf",
+     "page": 6,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 2,
+     "rerank_score": null
+    },
+    {
+     "rank": 3,
+     "paper": "2603.27179v1.pdf",
+     "page": 12,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 3,
+     "rerank_score": null
+    },
+    {
+     "rank": 4,
+     "paper": "2603.27179v1.pdf",
+     "page": 7,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 4,
+     "rerank_score": null
+    },
+    {
+     "rank": 5,
+     "paper": "2603.27179v1.pdf",
+     "page": 5,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 5,
+     "rerank_score": null
+    }
+   ],
+   "context": [
+    {
+     "rank": 1,
+     "paper": "2603.27179v1.pdf",
+     "page": 5,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 1
+    },
+    {
+     "rank": 2,
+     "paper": "2602.09850v2.pdf",
+     "page": 6,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 2
+    },
+    {
+     "rank": 3,
+     "paper": "2603.27179v1.pdf",
+     "page": 12,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 3
+    }
+   ],
+   "latency_ms": {
+    "query_embed": 312.1,
+    "query_embed_cached": true,
+    "vector_search": 6.2,
+    "rerank": null,
+    "rerank_cached": null
+   },
+   "metrics": {
+    "vector": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": true,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1
+    },
+    "rerank": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": null,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1
+    },
+    "context": {
+     "hit": true,
+     "passages": 3
+    }
+   }
+  },
+  {
+   "id": "real-06",
+   "type": "method",
+   "question": "In CGRO, how is the consistency reward computed differently for anomalous and normal images?",
+   "gold": [
+    {
+     "paper": "2603.27179v1.pdf",
+     "pages": [
+      5,
+      12
+     ]
+    }
+   ],
+   "gold_level": "page",
+   "library_question": false,
+   "vector": [
+    {
+     "rank": 1,
+     "paper": "2603.27179v1.pdf",
+     "page": 5,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.6326
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 5,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.5742
+    },
+    {
+     "rank": 3,
+     "paper": "2603.27179v1.pdf",
+     "page": 12,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.5494
+    },
+    {
+     "rank": 4,
+     "paper": "2603.27179v1.pdf",
+     "page": 12,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.5289
+    },
+    {
+     "rank": 5,
+     "paper": "2603.27179v1.pdf",
+     "page": 5,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.4993
+    },
+    {
+     "rank": 6,
+     "paper": "2603.27179v1.pdf",
+     "page": 6,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.4936
+    },
+    {
+     "rank": 7,
+     "paper": "2603.27179v1.pdf",
+     "page": 12,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.4862
+    },
+    {
+     "rank": 8,
+     "paper": "2603.27179v1.pdf",
+     "page": 7,
+     "chunk_id": 5,
+     "page_class": "body",
+     "score": 0.4804
+    }
+   ],
+   "rerank": [
+    {
+     "rank": 1,
+     "paper": "2603.27179v1.pdf",
+     "page": 5,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 1,
+     "rerank_score": null
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 5,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 2,
+     "rerank_score": null
+    },
+    {
+     "rank": 3,
+     "paper": "2603.27179v1.pdf",
+     "page": 12,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 3,
+     "rerank_score": null
+    },
+    {
+     "rank": 4,
+     "paper": "2603.27179v1.pdf",
+     "page": 12,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 4,
+     "rerank_score": null
+    },
+    {
+     "rank": 5,
+     "paper": "2603.27179v1.pdf",
+     "page": 5,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 5,
+     "rerank_score": null
+    }
+   ],
+   "context": [
+    {
+     "rank": 1,
+     "paper": "2603.27179v1.pdf",
+     "page": 5,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 1
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 5,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 2
+    }
+   ],
+   "latency_ms": {
+    "query_embed": 713.9,
+    "query_embed_cached": true,
+    "vector_search": 6.2,
+    "rerank": null,
+    "rerank_cached": null
+   },
+   "metrics": {
+    "vector": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": true,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1
+    },
+    "rerank": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": null,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1
+    },
+    "context": {
+     "hit": true,
+     "passages": 2
+    }
+   }
+  },
+  {
+   "id": "real-08",
+   "type": "results",
+   "question": "In the zero-shot comparison, which model has a higher average image-level accuracy than Qwen2.5-VL-7B with CGRO?",
+   "gold": [
+    {
+     "paper": "2603.27179v1.pdf",
+     "pages": [
+      6,
+      7
+     ]
+    }
+   ],
+   "gold_level": "page",
+   "library_question": false,
+   "vector": [
+    {
+     "rank": 1,
+     "paper": "2603.27179v1.pdf",
+     "page": 15,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.6865
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 7,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.6819
+    },
+    {
+     "rank": 3,
+     "paper": "2603.27179v1.pdf",
+     "page": 7,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.6738
+    },
+    {
+     "rank": 4,
+     "paper": "2602.09850v2.pdf",
+     "page": 7,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.6733
+    },
+    {
+     "rank": 5,
+     "paper": "2603.27179v1.pdf",
+     "page": 7,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.667
+    },
+    {
+     "rank": 6,
+     "paper": "2603.27179v1.pdf",
+     "page": 7,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.6661
+    },
+    {
+     "rank": 7,
+     "paper": "2602.09850v2.pdf",
+     "page": 8,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.6651
+    },
+    {
+     "rank": 8,
+     "paper": "2602.09850v2.pdf",
+     "page": 6,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.6505
+    }
+   ],
+   "rerank": [
+    {
+     "rank": 1,
+     "paper": "2603.27179v1.pdf",
+     "page": 15,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 1,
+     "rerank_score": null
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 7,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 2,
+     "rerank_score": null
+    },
+    {
+     "rank": 3,
+     "paper": "2603.27179v1.pdf",
+     "page": 7,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 3,
+     "rerank_score": null
+    },
+    {
+     "rank": 4,
+     "paper": "2602.09850v2.pdf",
+     "page": 7,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 4,
+     "rerank_score": null
+    },
+    {
+     "rank": 5,
+     "paper": "2603.27179v1.pdf",
+     "page": 7,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 5,
+     "rerank_score": null
+    }
+   ],
+   "context": [
+    {
+     "rank": 1,
+     "paper": "2603.27179v1.pdf",
+     "page": 15,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 1
+    },
+    {
+     "rank": 2,
+     "paper": "2602.09850v2.pdf",
+     "page": 7,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 4
+    }
+   ],
+   "latency_ms": {
+    "query_embed": 337.5,
+    "query_embed_cached": true,
+    "vector_search": 4.9,
+    "rerank": null,
+    "rerank_cached": null
+   },
+   "metrics": {
+    "vector": {
+     "recall@1": false,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": true,
+     "mrr@5": 0.5,
+     "mrr": 0.5,
+     "paper_hit@5": true,
+     "first_hit_rank": 2
+    },
+    "rerank": {
+     "recall@1": false,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": null,
+     "mrr@5": 0.5,
+     "mrr": 0.5,
+     "paper_hit@5": true,
+     "first_hit_rank": 2
+    },
+    "context": {
+     "hit": false,
+     "passages": 2
+    }
+   }
+  },
+  {
+   "id": "real-09",
+   "type": "limitation",
+   "question": "What limitations do the authors of the ReAL/CGRO paper state?",
+   "gold": [
+    {
+     "paper": "2603.27179v1.pdf",
+     "pages": [
+      15
+     ]
+    }
+   ],
+   "gold_level": "page",
+   "library_question": false,
+   "vector": [
+    {
+     "rank": 1,
+     "paper": "2602.09850v2.pdf",
+     "page": 22,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.3852
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 12,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.3788
+    },
+    {
+     "rank": 3,
+     "paper": "2603.27179v1.pdf",
+     "page": 15,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.3723
+    },
+    {
+     "rank": 4,
+     "paper": "2602.09850v2.pdf",
+     "page": 22,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.369
+    },
+    {
+     "rank": 5,
+     "paper": "2603.27179v1.pdf",
+     "page": 7,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.3603
+    },
+    {
+     "rank": 6,
+     "paper": "2603.27179v1.pdf",
+     "page": 12,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.3555
+    },
+    {
+     "rank": 7,
+     "paper": "2603.27179v1.pdf",
+     "page": 8,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.3434
+    },
+    {
+     "rank": 8,
+     "paper": "2603.27179v1.pdf",
+     "page": 15,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.3425
+    }
+   ],
+   "rerank": [
+    {
+     "rank": 1,
+     "paper": "2602.09850v2.pdf",
+     "page": 22,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 1,
+     "rerank_score": null
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 12,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 2,
+     "rerank_score": null
+    },
+    {
+     "rank": 3,
+     "paper": "2603.27179v1.pdf",
+     "page": 15,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 3,
+     "rerank_score": null
+    },
+    {
+     "rank": 4,
+     "paper": "2602.09850v2.pdf",
+     "page": 22,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 4,
+     "rerank_score": null
+    },
+    {
+     "rank": 5,
+     "paper": "2603.27179v1.pdf",
+     "page": 7,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 5,
+     "rerank_score": null
+    }
+   ],
+   "context": [
+    {
+     "rank": 1,
+     "paper": "2602.09850v2.pdf",
+     "page": 22,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 1
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 12,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 2
+    },
+    {
+     "rank": 3,
+     "paper": "2603.27179v1.pdf",
+     "page": 15,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 3
+    }
+   ],
+   "latency_ms": {
+    "query_embed": 326.9,
+    "query_embed_cached": true,
+    "vector_search": 4.9,
+    "rerank": null,
+    "rerank_cached": null
+   },
+   "metrics": {
+    "vector": {
+     "recall@1": false,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": true,
+     "mrr@5": 0.3333333333333333,
+     "mrr": 0.3333333333333333,
+     "paper_hit@5": true,
+     "first_hit_rank": 3
+    },
+    "rerank": {
+     "recall@1": false,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": null,
+     "mrr@5": 0.3333333333333333,
+     "mrr": 0.3333333333333333,
+     "paper_hit@5": true,
+     "first_hit_rank": 3
+    },
+    "context": {
+     "hit": true,
+     "passages": 3
+    }
+   }
+  },
+  {
+   "id": "real-10",
+   "type": "limitation",
+   "question": "What typical failure modes are shown for ReAL-based anomaly localization?",
+   "gold": [
+    {
+     "paper": "2603.27179v1.pdf",
+     "pages": [
+      14,
+      15
+     ]
+    }
+   ],
+   "gold_level": "page",
+   "library_question": false,
+   "vector": [
+    {
+     "rank": 1,
+     "paper": "2603.27179v1.pdf",
+     "page": 15,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.5269
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 15,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.5193
+    },
+    {
+     "rank": 3,
+     "paper": "2603.27179v1.pdf",
+     "page": 14,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.5188
+    },
+    {
+     "rank": 4,
+     "paper": "2602.09850v2.pdf",
+     "page": 18,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.5083
+    },
+    {
+     "rank": 5,
+     "paper": "2603.27179v1.pdf",
+     "page": 3,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.4935
+    },
+    {
+     "rank": 6,
+     "paper": "2603.27179v1.pdf",
+     "page": 7,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.4935
+    },
+    {
+     "rank": 7,
+     "paper": "2603.27179v1.pdf",
+     "page": 8,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.4833
+    },
+    {
+     "rank": 8,
+     "paper": "2603.27179v1.pdf",
+     "page": 12,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.4787
+    }
+   ],
+   "rerank": [
+    {
+     "rank": 1,
+     "paper": "2603.27179v1.pdf",
+     "page": 15,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 1,
+     "rerank_score": null
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 15,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 2,
+     "rerank_score": null
+    },
+    {
+     "rank": 3,
+     "paper": "2603.27179v1.pdf",
+     "page": 14,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 3,
+     "rerank_score": null
+    },
+    {
+     "rank": 4,
+     "paper": "2602.09850v2.pdf",
+     "page": 18,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 4,
+     "rerank_score": null
+    },
+    {
+     "rank": 5,
+     "paper": "2603.27179v1.pdf",
+     "page": 3,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 5,
+     "rerank_score": null
+    }
+   ],
+   "context": [
+    {
+     "rank": 1,
+     "paper": "2603.27179v1.pdf",
+     "page": 15,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 1
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 15,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 2
+    },
+    {
+     "rank": 3,
+     "paper": "2602.09850v2.pdf",
+     "page": 18,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 4
+    }
+   ],
+   "latency_ms": {
+    "query_embed": 314.7,
+    "query_embed_cached": true,
+    "vector_search": 6.9,
+    "rerank": null,
+    "rerank_cached": null
+   },
+   "metrics": {
+    "vector": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": true,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1
+    },
+    "rerank": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": null,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1
+    },
+    "context": {
+     "hit": true,
+     "passages": 3
+    }
+   }
+  },
+  {
+   "id": "vlmaoi-01",
+   "type": "factual",
+   "question": "What dataset was VLM-AOI evaluated on, and how many defect classes does it provide?",
+   "gold": [
+    {
+     "paper": "ETASR_18859.pdf",
+     "pages": [
+      3
+     ]
+    }
+   ],
+   "gold_level": "page",
+   "library_question": false,
+   "vector": [
+    {
+     "rank": 1,
+     "paper": "ETASR_18859.pdf",
+     "page": 4,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.7024
+    },
+    {
+     "rank": 2,
+     "paper": "ETASR_18859.pdf",
+     "page": 3,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.6825
+    },
+    {
+     "rank": 3,
+     "paper": "ETASR_18859.pdf",
+     "page": 5,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.6472
+    },
+    {
+     "rank": 4,
+     "paper": "ETASR_18859.pdf",
+     "page": 6,
+     "chunk_id": 1,
+     "page_class": "mixed",
+     "score": 0.6468
+    },
+    {
+     "rank": 5,
+     "paper": "ETASR_18859.pdf",
+     "page": 4,
+     "chunk_id": 4,
+     "page_class": "body",
+     "score": 0.6373
+    },
+    {
+     "rank": 6,
+     "paper": "ETASR_18859.pdf",
+     "page": 4,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.6325
+    },
+    {
+     "rank": 7,
+     "paper": "ETASR_18859.pdf",
+     "page": 6,
+     "chunk_id": 0,
+     "page_class": "mixed",
+     "score": 0.6274
+    },
+    {
+     "rank": 8,
+     "paper": "ETASR_18859.pdf",
+     "page": 1,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.6114
+    }
+   ],
+   "rerank": [
+    {
+     "rank": 1,
+     "paper": "ETASR_18859.pdf",
+     "page": 4,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 1,
+     "rerank_score": null
+    },
+    {
+     "rank": 2,
+     "paper": "ETASR_18859.pdf",
+     "page": 3,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 2,
+     "rerank_score": null
+    },
+    {
+     "rank": 3,
+     "paper": "ETASR_18859.pdf",
+     "page": 5,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 3,
+     "rerank_score": null
+    },
+    {
+     "rank": 4,
+     "paper": "ETASR_18859.pdf",
+     "page": 6,
+     "chunk_id": 1,
+     "page_class": "mixed",
+     "vector_rank": 4,
+     "rerank_score": null
+    },
+    {
+     "rank": 5,
+     "paper": "ETASR_18859.pdf",
+     "page": 4,
+     "chunk_id": 4,
+     "page_class": "body",
+     "vector_rank": 5,
+     "rerank_score": null
+    }
+   ],
+   "context": [
+    {
+     "rank": 1,
+     "paper": "ETASR_18859.pdf",
+     "page": 4,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 1
+    },
+    {
+     "rank": 2,
+     "paper": "ETASR_18859.pdf",
+     "page": 3,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 2
+    }
+   ],
+   "latency_ms": {
+    "query_embed": 656.0,
+    "query_embed_cached": true,
+    "vector_search": 4.7,
+    "rerank": null,
+    "rerank_cached": null
+   },
+   "metrics": {
+    "vector": {
+     "recall@1": false,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": true,
+     "mrr@5": 0.5,
+     "mrr": 0.5,
+     "paper_hit@5": true,
+     "first_hit_rank": 2
+    },
+    "rerank": {
+     "recall@1": false,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": null,
+     "mrr@5": 0.5,
+     "mrr": 0.5,
+     "paper_hit@5": true,
+     "first_hit_rank": 2
+    },
+    "context": {
+     "hit": true,
+     "passages": 2
+    }
+   }
+  },
+  {
+   "id": "vlmaoi-03",
+   "type": "factual",
+   "question": "What hardware and software environment were the VLM-AOI experiments run in?",
+   "gold": [
+    {
+     "paper": "ETASR_18859.pdf",
+     "pages": [
+      4
+     ]
+    }
+   ],
+   "gold_level": "page",
+   "library_question": false,
+   "vector": [
+    {
+     "rank": 1,
+     "paper": "ETASR_18859.pdf",
+     "page": 4,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.4519
+    },
+    {
+     "rank": 2,
+     "paper": "2602.09850v2.pdf",
+     "page": 14,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.3904
+    },
+    {
+     "rank": 3,
+     "paper": "ETASR_18859.pdf",
+     "page": 6,
+     "chunk_id": 2,
+     "page_class": "mixed",
+     "score": 0.3841
+    },
+    {
+     "rank": 4,
+     "paper": "ETASR_18859.pdf",
+     "page": 4,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.3829
+    },
+    {
+     "rank": 5,
+     "paper": "2603.27179v1.pdf",
+     "page": 6,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.38
+    },
+    {
+     "rank": 6,
+     "paper": "ETASR_18859.pdf",
+     "page": 4,
+     "chunk_id": 4,
+     "page_class": "body",
+     "score": 0.3766
+    },
+    {
+     "rank": 7,
+     "paper": "2503.14162v2.pdf",
+     "page": 5,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.3714
+    },
+    {
+     "rank": 8,
+     "paper": "2603.27179v1.pdf",
+     "page": 7,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.3696
+    }
+   ],
+   "rerank": [
+    {
+     "rank": 1,
+     "paper": "ETASR_18859.pdf",
+     "page": 4,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 1,
+     "rerank_score": null
+    },
+    {
+     "rank": 2,
+     "paper": "2602.09850v2.pdf",
+     "page": 14,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 2,
+     "rerank_score": null
+    },
+    {
+     "rank": 3,
+     "paper": "ETASR_18859.pdf",
+     "page": 6,
+     "chunk_id": 2,
+     "page_class": "mixed",
+     "vector_rank": 3,
+     "rerank_score": null
+    },
+    {
+     "rank": 4,
+     "paper": "ETASR_18859.pdf",
+     "page": 4,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 4,
+     "rerank_score": null
+    },
+    {
+     "rank": 5,
+     "paper": "2603.27179v1.pdf",
+     "page": 6,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 5,
+     "rerank_score": null
+    }
+   ],
+   "context": [
+    {
+     "rank": 1,
+     "paper": "ETASR_18859.pdf",
+     "page": 4,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 1
+    },
+    {
+     "rank": 2,
+     "paper": "2602.09850v2.pdf",
+     "page": 14,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 2
+    }
+   ],
+   "latency_ms": {
+    "query_embed": 1008.7,
+    "query_embed_cached": true,
+    "vector_search": 3.8,
+    "rerank": null,
+    "rerank_cached": null
+   },
+   "metrics": {
+    "vector": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": true,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1
+    },
+    "rerank": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": null,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1
+    },
+    "context": {
+     "hit": true,
+     "passages": 2
+    }
+   }
+  },
+  {
+   "id": "vlmaoi-05",
+   "type": "method",
+   "question": "How does VLM-AOI use the language side to cut false alarms from the localization stage?",
+   "gold": [
+    {
+     "paper": "ETASR_18859.pdf",
+     "pages": [
+      3
+     ]
+    }
+   ],
+   "gold_level": "page",
+   "library_question": false,
+   "vector": [
+    {
+     "rank": 1,
+     "paper": "ETASR_18859.pdf",
+     "page": 3,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.4618
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 15,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.4606
+    },
+    {
+     "rank": 3,
+     "paper": "2503.14162v2.pdf",
+     "page": 2,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.4545
+    },
+    {
+     "rank": 4,
+     "paper": "ETASR_18859.pdf",
+     "page": 2,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.4511
+    },
+    {
+     "rank": 5,
+     "paper": "ssrn-5745634.pdf",
+     "page": 3,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.4284
+    },
+    {
+     "rank": 6,
+     "paper": "ssrn-5745634.pdf",
+     "page": 4,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.4253
+    },
+    {
+     "rank": 7,
+     "paper": "2603.27179v1.pdf",
+     "page": 8,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.4249
+    },
+    {
+     "rank": 8,
+     "paper": "2603.27179v1.pdf",
+     "page": 2,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.4247
+    }
+   ],
+   "rerank": [
+    {
+     "rank": 1,
+     "paper": "ETASR_18859.pdf",
+     "page": 3,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 1,
+     "rerank_score": null
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 15,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 2,
+     "rerank_score": null
+    },
+    {
+     "rank": 3,
+     "paper": "2503.14162v2.pdf",
+     "page": 2,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 3,
+     "rerank_score": null
+    },
+    {
+     "rank": 4,
+     "paper": "ETASR_18859.pdf",
+     "page": 2,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 4,
+     "rerank_score": null
+    },
+    {
+     "rank": 5,
+     "paper": "ssrn-5745634.pdf",
+     "page": 3,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 5,
+     "rerank_score": null
+    }
+   ],
+   "context": [
+    {
+     "rank": 1,
+     "paper": "ETASR_18859.pdf",
+     "page": 3,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 1
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 15,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 2
+    },
+    {
+     "rank": 3,
+     "paper": "2503.14162v2.pdf",
+     "page": 2,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 3
+    },
+    {
+     "rank": 4,
+     "paper": "ETASR_18859.pdf",
+     "page": 2,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 4
+    }
+   ],
+   "latency_ms": {
+    "query_embed": 1012.0,
+    "query_embed_cached": true,
+    "vector_search": 3.2,
+    "rerank": null,
+    "rerank_cached": null
+   },
+   "metrics": {
+    "vector": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": true,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1
+    },
+    "rerank": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": null,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1
+    },
+    "context": {
+     "hit": true,
+     "passages": 4
+    }
+   }
+  },
+  {
+   "id": "vlmaoi-07",
+   "type": "results",
+   "question": "What accuracy did VLM-AOI and the ResNet-50 baseline reach on the unseen defect classes?",
+   "gold": [
+    {
+     "paper": "ETASR_18859.pdf",
+     "pages": [
+      4,
+      6
+     ]
+    }
+   ],
+   "gold_level": "page",
+   "library_question": false,
+   "vector": [
+    {
+     "rank": 1,
+     "paper": "ETASR_18859.pdf",
+     "page": 4,
+     "chunk_id": 4,
+     "page_class": "body",
+     "score": 0.7646
+    },
+    {
+     "rank": 2,
+     "paper": "ETASR_18859.pdf",
+     "page": 4,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.7385
+    },
+    {
+     "rank": 3,
+     "paper": "ETASR_18859.pdf",
+     "page": 6,
+     "chunk_id": 1,
+     "page_class": "mixed",
+     "score": 0.7358
+    },
+    {
+     "rank": 4,
+     "paper": "ETASR_18859.pdf",
+     "page": 4,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.7269
+    },
+    {
+     "rank": 5,
+     "paper": "ETASR_18859.pdf",
+     "page": 5,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.7045
+    },
+    {
+     "rank": 6,
+     "paper": "ETASR_18859.pdf",
+     "page": 6,
+     "chunk_id": 0,
+     "page_class": "mixed",
+     "score": 0.6765
+    },
+    {
+     "rank": 7,
+     "paper": "ETASR_18859.pdf",
+     "page": 4,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.6714
+    },
+    {
+     "rank": 8,
+     "paper": "ETASR_18859.pdf",
+     "page": 4,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.6602
+    }
+   ],
+   "rerank": [
+    {
+     "rank": 1,
+     "paper": "ETASR_18859.pdf",
+     "page": 4,
+     "chunk_id": 4,
+     "page_class": "body",
+     "vector_rank": 1,
+     "rerank_score": null
+    },
+    {
+     "rank": 2,
+     "paper": "ETASR_18859.pdf",
+     "page": 4,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 2,
+     "rerank_score": null
+    },
+    {
+     "rank": 3,
+     "paper": "ETASR_18859.pdf",
+     "page": 6,
+     "chunk_id": 1,
+     "page_class": "mixed",
+     "vector_rank": 3,
+     "rerank_score": null
+    },
+    {
+     "rank": 4,
+     "paper": "ETASR_18859.pdf",
+     "page": 4,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 4,
+     "rerank_score": null
+    },
+    {
+     "rank": 5,
+     "paper": "ETASR_18859.pdf",
+     "page": 5,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 5,
+     "rerank_score": null
+    }
+   ],
+   "context": [
+    {
+     "rank": 1,
+     "paper": "ETASR_18859.pdf",
+     "page": 4,
+     "chunk_id": 4,
+     "page_class": "body",
+     "vector_rank": 1
+    },
+    {
+     "rank": 2,
+     "paper": "ETASR_18859.pdf",
+     "page": 4,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 2
+    },
+    {
+     "rank": 3,
+     "paper": "ETASR_18859.pdf",
+     "page": 6,
+     "chunk_id": 1,
+     "page_class": "mixed",
+     "vector_rank": 3
+    }
+   ],
+   "latency_ms": {
+    "query_embed": 1034.6,
+    "query_embed_cached": true,
+    "vector_search": 5.6,
+    "rerank": null,
+    "rerank_cached": null
+   },
+   "metrics": {
+    "vector": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": true,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1
+    },
+    "rerank": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": null,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1
+    },
+    "context": {
+     "hit": true,
+     "passages": 3
+    }
+   }
+  },
+  {
+   "id": "vlmaoi-10",
+   "type": "limitation",
+   "question": "What future work do the VLM-AOI authors propose?",
+   "gold": [
+    {
+     "paper": "ETASR_18859.pdf",
+     "pages": [
+      6
+     ]
+    }
+   ],
+   "gold_level": "page",
+   "library_question": false,
+   "vector": [
+    {
+     "rank": 1,
+     "paper": "ETASR_18859.pdf",
+     "page": 6,
+     "chunk_id": 1,
+     "page_class": "mixed",
+     "score": 0.5219
+    },
+    {
+     "rank": 2,
+     "paper": "ETASR_18859.pdf",
+     "page": 6,
+     "chunk_id": 2,
+     "page_class": "mixed",
+     "score": 0.4992
+    },
+    {
+     "rank": 3,
+     "paper": "2603.27179v1.pdf",
+     "page": 2,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.4723
+    },
+    {
+     "rank": 4,
+     "paper": "ETASR_18859.pdf",
+     "page": 4,
+     "chunk_id": 4,
+     "page_class": "body",
+     "score": 0.4717
+    },
+    {
+     "rank": 5,
+     "paper": "2503.14162v2.pdf",
+     "page": 2,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.4602
+    },
+    {
+     "rank": 6,
+     "paper": "ETASR_18859.pdf",
+     "page": 6,
+     "chunk_id": 0,
+     "page_class": "mixed",
+     "score": 0.4568
+    },
+    {
+     "rank": 7,
+     "paper": "ETASR_18859.pdf",
+     "page": 2,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.454
+    },
+    {
+     "rank": 8,
+     "paper": "2602.09850v2.pdf",
+     "page": 13,
+     "chunk_id": 1,
+     "page_class": "reference",
+     "score": 0.4462
+    }
+   ],
+   "rerank": [
+    {
+     "rank": 1,
+     "paper": "ETASR_18859.pdf",
+     "page": 6,
+     "chunk_id": 1,
+     "page_class": "mixed",
+     "vector_rank": 1,
+     "rerank_score": null
+    },
+    {
+     "rank": 2,
+     "paper": "ETASR_18859.pdf",
+     "page": 6,
+     "chunk_id": 2,
+     "page_class": "mixed",
+     "vector_rank": 2,
+     "rerank_score": null
+    },
+    {
+     "rank": 3,
+     "paper": "2603.27179v1.pdf",
+     "page": 2,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 3,
+     "rerank_score": null
+    },
+    {
+     "rank": 4,
+     "paper": "ETASR_18859.pdf",
+     "page": 4,
+     "chunk_id": 4,
+     "page_class": "body",
+     "vector_rank": 4,
+     "rerank_score": null
+    },
+    {
+     "rank": 5,
+     "paper": "2503.14162v2.pdf",
+     "page": 2,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 5,
+     "rerank_score": null
+    }
+   ],
+   "context": [
+    {
+     "rank": 1,
+     "paper": "ETASR_18859.pdf",
+     "page": 6,
+     "chunk_id": 1,
+     "page_class": "mixed",
+     "vector_rank": 1
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 2,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 3
+    },
+    {
+     "rank": 3,
+     "paper": "ETASR_18859.pdf",
+     "page": 4,
+     "chunk_id": 4,
+     "page_class": "body",
+     "vector_rank": 4
+    }
+   ],
+   "latency_ms": {
+    "query_embed": 314.6,
+    "query_embed_cached": true,
+    "vector_search": 5.4,
+    "rerank": null,
+    "rerank_cached": null
+   },
+   "metrics": {
+    "vector": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": true,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1
+    },
+    "rerank": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": null,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1
+    },
+    "context": {
+     "hit": true,
+     "passages": 3
+    }
+   }
+  },
+  {
+   "id": "lmv-06",
+   "type": "method",
+   "question": "In Language Meets Vision, how are the image and text features combined to produce the segmentation map?",
+   "gold": [
+    {
+     "paper": "ssrn-5745634.pdf",
+     "pages": [
+      8,
+      9
+     ]
+    }
+   ],
+   "gold_level": "page",
+   "library_question": false,
+   "vector": [
+    {
+     "rank": 1,
+     "paper": "ssrn-5745634.pdf",
+     "page": 9,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.6678
+    },
+    {
+     "rank": 2,
+     "paper": "2503.14162v2.pdf",
+     "page": 4,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.5843
+    },
+    {
+     "rank": 3,
+     "paper": "ssrn-5745634.pdf",
+     "page": 4,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.5701
+    },
+    {
+     "rank": 4,
+     "paper": "ssrn-5745634.pdf",
+     "page": 15,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.5684
+    },
+    {
+     "rank": 5,
+     "paper": "ssrn-5745634.pdf",
+     "page": 8,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.5618
+    },
+    {
+     "rank": 6,
+     "paper": "ssrn-5745634.pdf",
+     "page": 14,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.5466
+    },
+    {
+     "rank": 7,
+     "paper": "ssrn-5745634.pdf",
+     "page": 10,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.542
+    },
+    {
+     "rank": 8,
+     "paper": "ssrn-5745634.pdf",
+     "page": 4,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.5386
+    }
+   ],
+   "rerank": [
+    {
+     "rank": 1,
+     "paper": "ssrn-5745634.pdf",
+     "page": 9,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 1,
+     "rerank_score": null
+    },
+    {
+     "rank": 2,
+     "paper": "2503.14162v2.pdf",
+     "page": 4,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 2,
+     "rerank_score": null
+    },
+    {
+     "rank": 3,
+     "paper": "ssrn-5745634.pdf",
+     "page": 4,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 3,
+     "rerank_score": null
+    },
+    {
+     "rank": 4,
+     "paper": "ssrn-5745634.pdf",
+     "page": 15,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 4,
+     "rerank_score": null
+    },
+    {
+     "rank": 5,
+     "paper": "ssrn-5745634.pdf",
+     "page": 8,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 5,
+     "rerank_score": null
+    }
+   ],
+   "context": [
+    {
+     "rank": 1,
+     "paper": "ssrn-5745634.pdf",
+     "page": 9,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 1
+    },
+    {
+     "rank": 2,
+     "paper": "2503.14162v2.pdf",
+     "page": 4,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 2
+    }
+   ],
+   "latency_ms": {
+    "query_embed": 1299.3,
+    "query_embed_cached": true,
+    "vector_search": 6.8,
+    "rerank": null,
+    "rerank_cached": null
+   },
+   "metrics": {
+    "vector": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": true,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1
+    },
+    "rerank": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": null,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1
+    },
+    "context": {
+     "hit": true,
+     "passages": 2
+    }
+   }
+  },
+  {
+   "id": "lmv-07",
+   "type": "results",
+   "question": "How does Language Meets Vision compare with the CLIP baseline on MVTec segmentation in Dice, mIoU and AP?",
+   "gold": [
+    {
+     "paper": "ssrn-5745634.pdf",
+     "pages": [
+      12
+     ]
+    }
+   ],
+   "gold_level": "page",
+   "library_question": false,
+   "vector": [
+    {
+     "rank": 1,
+     "paper": "ssrn-5745634.pdf",
+     "page": 12,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.7424
+    },
+    {
+     "rank": 2,
+     "paper": "ssrn-5745634.pdf",
+     "page": 12,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.6945
+    },
+    {
+     "rank": 3,
+     "paper": "ssrn-5745634.pdf",
+     "page": 14,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.6796
+    },
+    {
+     "rank": 4,
+     "paper": "ssrn-5745634.pdf",
+     "page": 14,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.6617
+    },
+    {
+     "rank": 5,
+     "paper": "ssrn-5745634.pdf",
+     "page": 15,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.6214
+    },
+    {
+     "rank": 6,
+     "paper": "2503.14162v2.pdf",
+     "page": 5,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.5979
+    },
+    {
+     "rank": 7,
+     "paper": "2503.14162v2.pdf",
+     "page": 5,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.5947
+    },
+    {
+     "rank": 8,
+     "paper": "2503.14162v2.pdf",
+     "page": 6,
+     "chunk_id": 0,
+     "page_class": "mixed",
+     "score": 0.588
+    }
+   ],
+   "rerank": [
+    {
+     "rank": 1,
+     "paper": "ssrn-5745634.pdf",
+     "page": 12,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 1,
+     "rerank_score": null
+    },
+    {
+     "rank": 2,
+     "paper": "ssrn-5745634.pdf",
+     "page": 12,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 2,
+     "rerank_score": null
+    },
+    {
+     "rank": 3,
+     "paper": "ssrn-5745634.pdf",
+     "page": 14,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 3,
+     "rerank_score": null
+    },
+    {
+     "rank": 4,
+     "paper": "ssrn-5745634.pdf",
+     "page": 14,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 4,
+     "rerank_score": null
+    },
+    {
+     "rank": 5,
+     "paper": "ssrn-5745634.pdf",
+     "page": 15,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 5,
+     "rerank_score": null
+    }
+   ],
+   "context": [
+    {
+     "rank": 1,
+     "paper": "ssrn-5745634.pdf",
+     "page": 12,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 1
+    },
+    {
+     "rank": 2,
+     "paper": "ssrn-5745634.pdf",
+     "page": 12,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 2
+    },
+    {
+     "rank": 3,
+     "paper": "ssrn-5745634.pdf",
+     "page": 14,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 3
+    }
+   ],
+   "latency_ms": {
+    "query_embed": 325.1,
+    "query_embed_cached": true,
+    "vector_search": 6.2,
+    "rerank": null,
+    "rerank_cached": null
+   },
+   "metrics": {
+    "vector": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": true,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1
+    },
+    "rerank": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": null,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1
+    },
+    "context": {
+     "hit": true,
+     "passages": 3
+    }
+   }
+  },
+  {
+   "id": "cross-01",
+   "type": "cross-paper",
+   "question": "How do EIAD and the ReAL/CGRO paper differ in the supervision needed to get pixel-level anomaly maps?",
+   "gold": [
+    {
+     "paper": "2503.14162v2.pdf",
+     "pages": [
+      4
+     ]
+    },
+    {
+     "paper": "2603.27179v1.pdf",
+     "pages": [
+      1,
+      2,
+      6
+     ]
+    }
+   ],
+   "gold_level": "page",
+   "library_question": false,
+   "vector": [
+    {
+     "rank": 1,
+     "paper": "2603.27179v1.pdf",
+     "page": 12,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.5348
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 1,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.5228
+    },
+    {
+     "rank": 3,
+     "paper": "2603.27179v1.pdf",
+     "page": 1,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.52
+    },
+    {
+     "rank": 4,
+     "paper": "2603.27179v1.pdf",
+     "page": 12,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.515
+    },
+    {
+     "rank": 5,
+     "paper": "2603.27179v1.pdf",
+     "page": 3,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.5147
+    },
+    {
+     "rank": 6,
+     "paper": "2603.27179v1.pdf",
+     "page": 5,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.5119
+    },
+    {
+     "rank": 7,
+     "paper": "2603.27179v1.pdf",
+     "page": 2,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.5014
+    },
+    {
+     "rank": 8,
+     "paper": "2603.27179v1.pdf",
+     "page": 5,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.5005
+    }
+   ],
+   "rerank": [
+    {
+     "rank": 1,
+     "paper": "2603.27179v1.pdf",
+     "page": 12,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 1,
+     "rerank_score": null
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 1,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 2,
+     "rerank_score": null
+    },
+    {
+     "rank": 3,
+     "paper": "2603.27179v1.pdf",
+     "page": 1,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 3,
+     "rerank_score": null
+    },
+    {
+     "rank": 4,
+     "paper": "2603.27179v1.pdf",
+     "page": 12,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 4,
+     "rerank_score": null
+    },
+    {
+     "rank": 5,
+     "paper": "2603.27179v1.pdf",
+     "page": 3,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 5,
+     "rerank_score": null
+    }
+   ],
+   "context": [
+    {
+     "rank": 1,
+     "paper": "2603.27179v1.pdf",
+     "page": 12,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 1
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 1,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 2
+    }
+   ],
+   "latency_ms": {
+    "query_embed": 309.6,
+    "query_embed_cached": true,
+    "vector_search": 4.9,
+    "rerank": null,
+    "rerank_cached": null
+   },
+   "metrics": {
+    "vector": {
+     "recall@1": false,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": true,
+     "mrr@5": 0.5,
+     "mrr": 0.5,
+     "paper_hit@5": true,
+     "first_hit_rank": 2,
+     "gold_paper_share": 0.5
+    },
+    "rerank": {
+     "recall@1": false,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": null,
+     "mrr@5": 0.5,
+     "mrr": 0.5,
+     "paper_hit@5": true,
+     "first_hit_rank": 2,
+     "gold_paper_share": 0.5
+    },
+    "context": {
+     "hit": true,
+     "passages": 2,
+     "gold_paper_share": 0.5
+    }
+   }
+  },
+  {
+   "id": "cross-03",
+   "type": "cross-paper",
+   "question": "Do EIAD and Reason-IAD report the same MMAD numbers for GPT-4o?",
+   "gold": [
+    {
+     "paper": "2503.14162v2.pdf",
+     "pages": [
+      5
+     ]
+    },
+    {
+     "paper": "2602.09850v2.pdf",
+     "pages": [
+      6,
+      8
+     ]
+    }
+   ],
+   "gold_level": "page",
+   "library_question": false,
+   "vector": [
+    {
+     "rank": 1,
+     "paper": "2503.14162v2.pdf",
+     "page": 5,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.5123
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 7,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.5069
+    },
+    {
+     "rank": 3,
+     "paper": "2602.09850v2.pdf",
+     "page": 7,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.4836
+    },
+    {
+     "rank": 4,
+     "paper": "2602.09850v2.pdf",
+     "page": 7,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.4744
+    },
+    {
+     "rank": 5,
+     "paper": "2602.09850v2.pdf",
+     "page": 8,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.473
+    },
+    {
+     "rank": 6,
+     "paper": "2602.09850v2.pdf",
+     "page": 14,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.4711
+    },
+    {
+     "rank": 7,
+     "paper": "2602.09850v2.pdf",
+     "page": 6,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.4701
+    },
+    {
+     "rank": 8,
+     "paper": "2503.14162v2.pdf",
+     "page": 5,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.4697
+    }
+   ],
+   "rerank": [
+    {
+     "rank": 1,
+     "paper": "2503.14162v2.pdf",
+     "page": 5,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 1,
+     "rerank_score": null
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 7,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 2,
+     "rerank_score": null
+    },
+    {
+     "rank": 3,
+     "paper": "2602.09850v2.pdf",
+     "page": 7,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 3,
+     "rerank_score": null
+    },
+    {
+     "rank": 4,
+     "paper": "2602.09850v2.pdf",
+     "page": 7,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 4,
+     "rerank_score": null
+    },
+    {
+     "rank": 5,
+     "paper": "2602.09850v2.pdf",
+     "page": 8,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 5,
+     "rerank_score": null
+    }
+   ],
+   "context": [
+    {
+     "rank": 1,
+     "paper": "2503.14162v2.pdf",
+     "page": 5,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 1
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 7,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 2
+    }
+   ],
+   "latency_ms": {
+    "query_embed": 306.4,
+    "query_embed_cached": true,
+    "vector_search": 5.3,
+    "rerank": null,
+    "rerank_cached": null
+   },
+   "metrics": {
+    "vector": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": true,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1,
+     "gold_paper_share": 1.0
+    },
+    "rerank": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": null,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1,
+     "gold_paper_share": 1.0
+    },
+    "context": {
+     "hit": true,
+     "passages": 2,
+     "gold_paper_share": 0.5
+    }
+   }
+  },
+  {
+   "id": "cross-06",
+   "type": "cross-paper",
+   "question": "How do VLM-AOI and Language Meets Vision each divide inspection into two stages?",
+   "gold": [
+    {
+     "paper": "ETASR_18859.pdf",
+     "pages": [
+      1,
+      2,
+      3
+     ]
+    },
+    {
+     "paper": "ssrn-5745634.pdf",
+     "pages": [
+      2,
+      4,
+      5
+     ]
+    }
+   ],
+   "gold_level": "page",
+   "library_question": false,
+   "vector": [
+    {
+     "rank": 1,
+     "paper": "ETASR_18859.pdf",
+     "page": 2,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.6584
+    },
+    {
+     "rank": 2,
+     "paper": "ETASR_18859.pdf",
+     "page": 2,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.6066
+    },
+    {
+     "rank": 3,
+     "paper": "ETASR_18859.pdf",
+     "page": 1,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.5942
+    },
+    {
+     "rank": 4,
+     "paper": "ETASR_18859.pdf",
+     "page": 3,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.584
+    },
+    {
+     "rank": 5,
+     "paper": "ETASR_18859.pdf",
+     "page": 4,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.5831
+    },
+    {
+     "rank": 6,
+     "paper": "ssrn-5745634.pdf",
+     "page": 5,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.5654
+    },
+    {
+     "rank": 7,
+     "paper": "ssrn-5745634.pdf",
+     "page": 5,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.5526
+    },
+    {
+     "rank": 8,
+     "paper": "ssrn-5745634.pdf",
+     "page": 4,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.5495
+    }
+   ],
+   "rerank": [
+    {
+     "rank": 1,
+     "paper": "ETASR_18859.pdf",
+     "page": 2,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 1,
+     "rerank_score": null
+    },
+    {
+     "rank": 2,
+     "paper": "ETASR_18859.pdf",
+     "page": 2,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 2,
+     "rerank_score": null
+    },
+    {
+     "rank": 3,
+     "paper": "ETASR_18859.pdf",
+     "page": 1,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 3,
+     "rerank_score": null
+    },
+    {
+     "rank": 4,
+     "paper": "ETASR_18859.pdf",
+     "page": 3,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 4,
+     "rerank_score": null
+    },
+    {
+     "rank": 5,
+     "paper": "ETASR_18859.pdf",
+     "page": 4,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 5,
+     "rerank_score": null
+    }
+   ],
+   "context": [
+    {
+     "rank": 1,
+     "paper": "ETASR_18859.pdf",
+     "page": 2,
+     "chunk_id": 3,
+     "page_class": "body",
+     "vector_rank": 1
+    },
+    {
+     "rank": 2,
+     "paper": "ETASR_18859.pdf",
+     "page": 2,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 2
+    },
+    {
+     "rank": 3,
+     "paper": "ETASR_18859.pdf",
+     "page": 1,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 3
+    }
+   ],
+   "latency_ms": {
+    "query_embed": 1020.3,
+    "query_embed_cached": true,
+    "vector_search": 6.5,
+    "rerank": null,
+    "rerank_cached": null
+   },
+   "metrics": {
+    "vector": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": true,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1,
+     "gold_paper_share": 1.0
+    },
+    "rerank": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": null,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1,
+     "gold_paper_share": 0.5
+    },
+    "context": {
+     "hit": true,
+     "passages": 3,
+     "gold_paper_share": 0.5
+    }
+   }
+  },
+  {
+   "id": "cross-07",
+   "type": "cross-paper",
+   "question": "Which of the MLLM-based methods are trained or fine-tuned, and which work without any training?",
+   "gold": [
+    {
+     "paper": "2602.09850v2.pdf",
+     "pages": [
+      2,
+      10,
+      18
+     ]
+    },
+    {
+     "paper": "2503.14162v2.pdf",
+     "pages": [
+      5
+     ]
+    },
+    {
+     "paper": "2603.27179v1.pdf",
+     "pages": [
+      6
+     ]
+    }
+   ],
+   "gold_level": "page",
+   "library_question": false,
+   "vector": [
+    {
+     "rank": 1,
+     "paper": "2603.27179v1.pdf",
+     "page": 6,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.5433
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 2,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.5148
+    },
+    {
+     "rank": 3,
+     "paper": "2602.09850v2.pdf",
+     "page": 28,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.5089
+    },
+    {
+     "rank": 4,
+     "paper": "2603.27179v1.pdf",
+     "page": 2,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.4921
+    },
+    {
+     "rank": 5,
+     "paper": "ssrn-5745634.pdf",
+     "page": 11,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.491
+    },
+    {
+     "rank": 6,
+     "paper": "2602.09850v2.pdf",
+     "page": 7,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.4896
+    },
+    {
+     "rank": 7,
+     "paper": "ssrn-5745634.pdf",
+     "page": 19,
+     "chunk_id": 0,
+     "page_class": "reference",
+     "score": 0.4794
+    },
+    {
+     "rank": 8,
+     "paper": "2603.27179v1.pdf",
+     "page": 11,
+     "chunk_id": 0,
+     "page_class": "reference",
+     "score": 0.479
+    }
+   ],
+   "rerank": [
+    {
+     "rank": 1,
+     "paper": "2603.27179v1.pdf",
+     "page": 6,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 1,
+     "rerank_score": null
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 2,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 2,
+     "rerank_score": null
+    },
+    {
+     "rank": 3,
+     "paper": "2602.09850v2.pdf",
+     "page": 28,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 3,
+     "rerank_score": null
+    },
+    {
+     "rank": 4,
+     "paper": "2603.27179v1.pdf",
+     "page": 2,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 4,
+     "rerank_score": null
+    },
+    {
+     "rank": 5,
+     "paper": "ssrn-5745634.pdf",
+     "page": 11,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 5,
+     "rerank_score": null
+    }
+   ],
+   "context": [
+    {
+     "rank": 1,
+     "paper": "2603.27179v1.pdf",
+     "page": 6,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 1
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 2,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 2
+    },
+    {
+     "rank": 3,
+     "paper": "2602.09850v2.pdf",
+     "page": 28,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 3
+    }
+   ],
+   "latency_ms": {
+    "query_embed": 1026.3,
+    "query_embed_cached": true,
+    "vector_search": 7.0,
+    "rerank": null,
+    "rerank_cached": null
+   },
+   "metrics": {
+    "vector": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": true,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1,
+     "gold_paper_share": 0.6666666666666666
+    },
+    "rerank": {
+     "recall@1": true,
+     "recall@3": true,
+     "recall@5": true,
+     "recall@8": null,
+     "mrr@5": 1.0,
+     "mrr": 1.0,
+     "paper_hit@5": true,
+     "first_hit_rank": 1,
+     "gold_paper_share": 0.6666666666666666
+    },
+    "context": {
+     "hit": true,
+     "passages": 3,
+     "gold_paper_share": 0.6666666666666666
+    }
+   }
+  },
+  {
+   "id": "unans-04",
+   "type": "unanswerable",
+   "question": "How robust are these detectors to adversarial patches placed on the inspected product?",
+   "gold": [],
+   "gold_level": "page",
+   "library_question": false,
+   "vector": [
+    {
+     "rank": 1,
+     "paper": "2602.09850v2.pdf",
+     "page": 9,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.5377
+    },
+    {
+     "rank": 2,
+     "paper": "ETASR_18859.pdf",
+     "page": 2,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.4991
+    },
+    {
+     "rank": 3,
+     "paper": "ETASR_18859.pdf",
+     "page": 5,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.4971
+    },
+    {
+     "rank": 4,
+     "paper": "ETASR_18859.pdf",
+     "page": 7,
+     "chunk_id": 0,
+     "page_class": "reference",
+     "score": 0.489
+    },
+    {
+     "rank": 5,
+     "paper": "2603.27179v1.pdf",
+     "page": 14,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.4873
+    },
+    {
+     "rank": 6,
+     "paper": "2603.27179v1.pdf",
+     "page": 15,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.487
+    },
+    {
+     "rank": 7,
+     "paper": "2603.27179v1.pdf",
+     "page": 7,
+     "chunk_id": 4,
+     "page_class": "body",
+     "score": 0.4817
+    },
+    {
+     "rank": 8,
+     "paper": "ssrn-5745634.pdf",
+     "page": 17,
+     "chunk_id": 1,
+     "page_class": "mixed",
+     "score": 0.4753
+    }
+   ],
+   "rerank": [
+    {
+     "rank": 1,
+     "paper": "2602.09850v2.pdf",
+     "page": 9,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 1,
+     "rerank_score": null
+    },
+    {
+     "rank": 2,
+     "paper": "ETASR_18859.pdf",
+     "page": 2,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 2,
+     "rerank_score": null
+    },
+    {
+     "rank": 3,
+     "paper": "ETASR_18859.pdf",
+     "page": 5,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 3,
+     "rerank_score": null
+    },
+    {
+     "rank": 4,
+     "paper": "ETASR_18859.pdf",
+     "page": 7,
+     "chunk_id": 0,
+     "page_class": "reference",
+     "vector_rank": 4,
+     "rerank_score": null
+    },
+    {
+     "rank": 5,
+     "paper": "2603.27179v1.pdf",
+     "page": 14,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 5,
+     "rerank_score": null
+    }
+   ],
+   "context": [
+    {
+     "rank": 1,
+     "paper": "2602.09850v2.pdf",
+     "page": 9,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 1
+    },
+    {
+     "rank": 2,
+     "paper": "ETASR_18859.pdf",
+     "page": 2,
+     "chunk_id": 0,
+     "page_class": "body",
+     "vector_rank": 2
+    },
+    {
+     "rank": 3,
+     "paper": "ETASR_18859.pdf",
+     "page": 5,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 3
+    }
+   ],
+   "latency_ms": {
+    "query_embed": 318.0,
+    "query_embed_cached": true,
+    "vector_search": 6.8,
+    "rerank": null,
+    "rerank_cached": null
+   }
+  },
+  {
+   "id": "unans-05",
+   "type": "unanswerable",
+   "question": "What false-positive rate did any of these systems show after deployment on a real factory line?",
+   "gold": [],
+   "gold_level": "page",
+   "library_question": false,
+   "vector": [
+    {
+     "rank": 1,
+     "paper": "ETASR_18859.pdf",
+     "page": 6,
+     "chunk_id": 2,
+     "page_class": "mixed",
+     "score": 0.3851
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 15,
+     "chunk_id": 1,
+     "page_class": "body",
+     "score": 0.3847
+    },
+    {
+     "rank": 3,
+     "paper": "ssrn-5745634.pdf",
+     "page": 17,
+     "chunk_id": 1,
+     "page_class": "mixed",
+     "score": 0.3725
+    },
+    {
+     "rank": 4,
+     "paper": "ETASR_18859.pdf",
+     "page": 6,
+     "chunk_id": 3,
+     "page_class": "mixed",
+     "score": 0.3677
+    },
+    {
+     "rank": 5,
+     "paper": "ETASR_18859.pdf",
+     "page": 3,
+     "chunk_id": 2,
+     "page_class": "body",
+     "score": 0.3621
+    },
+    {
+     "rank": 6,
+     "paper": "2503.14162v2.pdf",
+     "page": 1,
+     "chunk_id": 3,
+     "page_class": "body",
+     "score": 0.3597
+    },
+    {
+     "rank": 7,
+     "paper": "2603.27179v1.pdf",
+     "page": 14,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.3595
+    },
+    {
+     "rank": 8,
+     "paper": "ETASR_18859.pdf",
+     "page": 4,
+     "chunk_id": 0,
+     "page_class": "body",
+     "score": 0.3587
+    }
+   ],
+   "rerank": [
+    {
+     "rank": 1,
+     "paper": "ETASR_18859.pdf",
+     "page": 6,
+     "chunk_id": 2,
+     "page_class": "mixed",
+     "vector_rank": 1,
+     "rerank_score": null
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 15,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 2,
+     "rerank_score": null
+    },
+    {
+     "rank": 3,
+     "paper": "ssrn-5745634.pdf",
+     "page": 17,
+     "chunk_id": 1,
+     "page_class": "mixed",
+     "vector_rank": 3,
+     "rerank_score": null
+    },
+    {
+     "rank": 4,
+     "paper": "ETASR_18859.pdf",
+     "page": 6,
+     "chunk_id": 3,
+     "page_class": "mixed",
+     "vector_rank": 4,
+     "rerank_score": null
+    },
+    {
+     "rank": 5,
+     "paper": "ETASR_18859.pdf",
+     "page": 3,
+     "chunk_id": 2,
+     "page_class": "body",
+     "vector_rank": 5,
+     "rerank_score": null
+    }
+   ],
+   "context": [
+    {
+     "rank": 1,
+     "paper": "ETASR_18859.pdf",
+     "page": 6,
+     "chunk_id": 2,
+     "page_class": "mixed",
+     "vector_rank": 1
+    },
+    {
+     "rank": 2,
+     "paper": "2603.27179v1.pdf",
+     "page": 15,
+     "chunk_id": 1,
+     "page_class": "body",
+     "vector_rank": 2
+    },
+    {
+     "rank": 3,
+     "paper": "ETASR_18859.pdf",
+     "page": 6,
+     "chunk_id": 3,
+     "page_class": "mixed",
+     "vector_rank": 4
+    }
+   ],
+   "latency_ms": {
+    "query_embed": 1001.5,
+    "query_embed_cached": true,
+    "vector_search": 6.7,
+    "rerank": null,
+    "rerank_cached": null
+   }
+  }
+ ]
+}
