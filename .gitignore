@@ -45,3 +45,6 @@ Thumbs.db
 docs/blueprint/
 README.local.md
 STATUS_REPORT.md
+
+# Retrieval eval cache (embeddings, rerank scores)
+backend/eval/cache/
