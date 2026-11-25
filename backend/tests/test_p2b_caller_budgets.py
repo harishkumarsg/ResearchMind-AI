@@ -535,10 +535,11 @@ class TestSharedDefaultsUnchanged(unittest.TestCase):
 
 
 class TestAskUnchangedByPhaseB(unittest.TestCase):
-    def test_ask_keeps_its_own_four_thousand_character_budget(self):
+    def test_ask_keeps_its_own_six_thousand_character_budget(self):
         from app.api.ask_stream import MAX_CONTEXT
 
-        self.assertEqual(MAX_CONTEXT, 4000)
+        # Raised from 4000 by the retrieval eval (see test_p2a_generation_budgets).
+        self.assertEqual(MAX_CONTEXT, 6000)
 
     def test_ask_still_does_not_use_the_shared_primitive(self):
         from app.api import ask_stream

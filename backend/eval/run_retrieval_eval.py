@@ -56,6 +56,13 @@ limit or MAX_CONTEXT for this process, sets RERANK_ENABLED, or (rerank10)
 replaces the rerank call with rerank_full_text. Each run writes
 results/<variant>-<split>.json and .md and rewrites results/compare-<split>.md.
 
+Variants measured before the indexer's reference filter existed call the
+indexer with drop_references=False, so they reproduce what was measured.
+--variant impl-check is not a measurement: it runs the production code as it
+is (reference filter on, production MAX_CONTEXT, RERANK_ENABLED unset) and
+checks that it reproduces no-refs-ctx6000-rerank-off field by field; it
+exits non-zero on any difference and is left out of the compare files.
+
 Usage, from backend/, with the production venv:
     python eval/run_retrieval_eval.py [--variant baseline]
         [--questions eval/questions_dev.jsonl] [--run-name NAME] [--papers DIR]
@@ -116,7 +123,9 @@ KS = (1, 3, 5, 8)
 #:                 with RERANK_ENABLED=false (vector top 5 unchanged);
 #:                 "full" = rerank the vector top rerank_n on full chunk text
 #:   rerank_n      for "full": how many vector hits are reranked
-#:   max_context   None = production MAX_CONTEXT (4000)
+#:   max_context   None = production's current ask_stream.MAX_CONTEXT (impl-check
+#:                 only). Variants measured when it was 4000 pin 4000, so they
+#:                 still reproduce now that production uses 6000
 #:   network       False = every Voyage result must come from the cache; a
 #:                 cache miss stops the run instead of calling Voyage
 #:   after         the variant whose results must exist for the same split:
@@ -124,13 +133,13 @@ KS = (1, 3, 5, 8)
 #:                 are reused. The no-refs index itself is shared by every
 #:                 split and rebuilt from cached vectors if missing.
 VARIANTS = {
-    "baseline": dict(index="full", search_limit=None, rerank="production", max_context=None,
+    "baseline": dict(index="full", search_limit=None, rerank="production", max_context=4000,
                      network=True, description="Production retrieval, reranking on."),
-    "rerank-off": dict(index="full", search_limit=None, rerank="off", max_context=None,
+    "rerank-off": dict(index="full", search_limit=None, rerank="off", max_context=4000,
                        network=False, after="baseline",
                        description="Production with RERANK_ENABLED=false: vector top 5, top 4, "
                                    "_select_evidence. Computed from the baseline's cache."),
-    "no-refs": dict(index="no-refs", search_limit=None, rerank="production", max_context=None,
+    "no-refs": dict(index="no-refs", search_limit=None, rerank="production", max_context=4000,
                     network=True, after="baseline",
                     description="Reference-list pages not indexed; mixed pages indexed only up to "
                                 "the References heading. Otherwise as baseline."),
@@ -144,7 +153,7 @@ VARIANTS = {
     # the free-tier attempt (variant no-refs-rerank-all, since removed) was too
     # slow to finish. Ten full chunks is about half that per request.
     "no-refs-top20-rerank10": dict(index="no-refs", search_limit=20, rerank="full", rerank_n=10,
-                                   max_context=None, network=True, after="no-refs",
+                                   max_context=4000, network=True, after="no-refs",
                                    description="no-refs, vector top 20, rerank the top 10 on full "
                                                "chunk text, keep the top 4."),
     # May call Voyage: on the test set it is run without no-refs-top20-rerank10,
@@ -153,10 +162,25 @@ VARIANTS = {
                                            rerank_n=10, max_context=6000, network=True,
                                            after="baseline",
                                            description="As no-refs-top20-rerank10, with MAX_CONTEXT 6000."),
+    # Not a measurement: checks that the production code which implements
+    # no-refs-ctx6000-rerank-off reproduces that run exactly. Every setting
+    # is production's own: the indexer's reference filter
+    # (app/services/reference_filter.py), ask_stream.MAX_CONTEXT, and
+    # RERANK_ENABLED left unset so the code's default applies. Not listed in
+    # compare-<split>.md; its result carries an implementation_check section.
+    "impl-check": dict(index="production", search_limit=None, rerank="off", max_context=None,
+                       rerank_env="unset", network=False, after="baseline", in_compare=False,
+                       matches="no-refs-ctx6000-rerank-off",
+                       description="Implementation check, not a new result: the production indexer "
+                                   "(reference filter on), production MAX_CONTEXT, RERANK_ENABLED unset "
+                                   "(code default). Must reproduce no-refs-ctx6000-rerank-off exactly."),
 }
 
 #: One embedded Qdrant store per index kind; each holds a researchmind_eval collection.
-INDEX_STORES = {"full": "qdrant", "no-refs": "qdrant-no-refs"}
+#: "full" and "no-refs" call the indexer with drop_references=False, the
+#: indexer as it was when they were measured; "production" calls it as
+#: production does, with its reference filter on.
+INDEX_STORES = {"full": "qdrant", "no-refs": "qdrant-no-refs", "production": "qdrant-production"}
 
 
 # ----------------------------------------------------------- environment
@@ -186,7 +210,8 @@ def _read_allowed_keys(path):
 
 def configure_environment(rerank_enabled=True, read_voyage_key=True):
     """Must run before any app module is imported. A variant that needs no
-    network does not read the production .env at all."""
+    network does not read the production .env at all. rerank_enabled=None
+    leaves RERANK_ENABLED unset, so the code's default applies."""
     os.environ["PYTHON_DOTENV_DISABLED"] = "1"
     dead = "http://localhost:1"
     os.environ.update({
@@ -206,6 +231,8 @@ def configure_environment(rerank_enabled=True, read_voyage_key=True):
         # would only double it. Batch composition is unchanged.
         "VOYAGE_EMBED_PACING_SECONDS": "0",
     })
+    if rerank_enabled is None:
+        os.environ.pop("RERANK_ENABLED", None)
     if read_voyage_key:
         os.environ.update(_read_allowed_keys(SECRETS_ENV))
     else:
@@ -430,10 +457,17 @@ def build_paper_chunks(app, pdf, index_kind):
     if len(pages) > app.limits.max_pages_per_paper():
         raise SystemExit(f"{pdf.name}: {len(pages)} pages exceeds the production cap")
     kinds = None
+    paper = SimpleNamespace(id=paper_uuid(pdf.name), owner_id=OWNER_ID, title=pdf.name)
+    if index_kind == "production":
+        # The production indexer as it runs, with its own reference filter.
+        kinds = dict(Counter(kind for kind, _ in app.reference_filter.classify_pages(
+            [app.clean_text(p.get("text", "")) for p in pages])))
+        chunks = app.build_chunks(paper, pages)
+        return paper, pages, chunks, kinds
     if index_kind == "no-refs":
         pages, kinds = without_references(app, pages)
-    paper = SimpleNamespace(id=paper_uuid(pdf.name), owner_id=OWNER_ID, title=pdf.name)
-    chunks = app.build_chunks(paper, pages)
+    # The indexer as it was when these index kinds were measured.
+    chunks = app.build_chunks(paper, pages, drop_references=False)
     return paper, pages, chunks, kinds
 
 
@@ -646,6 +680,10 @@ def markdown_summary(run):
         "",
         f"Variant `{run['variant']}`: {run['settings']['variant_description']}",
         "",
+    ]
+    if run.get("implementation_check"):
+        lines += implementation_check_markdown(run["implementation_check"])
+    lines += [
         "## Settings measured",
         "",
     ]
@@ -744,12 +782,111 @@ def markdown_summary(run):
     return "\n".join(lines)
 
 
+# ---------------------------------------------------- implementation check
+
+#: Run-level fields that must be equal. Timing, latency, Voyage call counts,
+#: names and descriptions are about the run, not its result, and are not compared.
+CHECKED_RUN_FIELDS = ("counts", "metrics", "cross_paper", "unanswerable", "page_class_share",
+                      "worst_misses")
+CHECKED_SETTINGS = ("embed_model", "search_limit", "rerank_mode", "max_rerank", "top_chunks",
+                    "max_context_chars", "rerank_enabled")
+CHECKED_ITEM_FIELDS = ("id", "type", "gold", "gold_level", "library_question", "vector", "rerank",
+                       "context", "metrics")
+CHECKED_INDEX_FIELDS = ("pages", "chunks", "indexed_pages", "page_classes")
+
+
+def _differences(path, got, want, out):
+    if isinstance(got, dict) and isinstance(want, dict):
+        for key in sorted(set(got) | set(want)):
+            _differences(f"{path}.{key}", got.get(key, "<missing>"), want.get(key, "<missing>"), out)
+    elif isinstance(got, list) and isinstance(want, list) and len(got) == len(want):
+        for i, (g, w) in enumerate(zip(got, want)):
+            _differences(f"{path}[{i}]", g, w, out)
+    elif got != want:
+        out.append(f"{path}: {json.dumps(got)} != {json.dumps(want)}")
+
+
+def implementation_check(run, reference_name, split, index_kind):
+    """Every result field of this run against the measured run it must
+    reproduce, plus the chunk fingerprints of both indexes (model and every
+    chunk payload, so equal fingerprints mean byte-identical chunks)."""
+    ref_path = RESULTS_DIR / f"{reference_name}-{split}.json"
+    ref = json.loads(ref_path.read_text(encoding="utf-8"))
+    run = json.loads(json.dumps(run))  # compare both in their stored JSON form
+    diffs = []
+    for field in CHECKED_RUN_FIELDS:
+        _differences(field, run[field], ref[field], diffs)
+    for field in CHECKED_SETTINGS:
+        _differences(f"settings.{field}", run["settings"].get(field, "<missing>"),
+                     ref["settings"].get(field, "<missing>"), diffs)
+    _differences("items.ids", [it["id"] for it in run["items"]], [it["id"] for it in ref["items"]], diffs)
+    ref_items = {it["id"]: it for it in ref["items"]}
+    for it in run["items"]:
+        other = ref_items.get(it["id"], {})
+        for field in CHECKED_ITEM_FIELDS:
+            _differences(f"items[{it['id']}].{field}", it.get(field), other.get(field), diffs)
+    for paper in sorted(set(run["index"]) | set(ref["index"])):
+        for field in CHECKED_INDEX_FIELDS:
+            _differences(f"index[{paper}].{field}", run["index"].get(paper, {}).get(field),
+                         ref["index"].get(paper, {}).get(field), diffs)
+
+    reference_index = VARIANTS[reference_name]["index"]
+    manifests = {}
+    for kind in (index_kind, reference_index):
+        suffix = "" if kind == "full" else f"-{kind}"
+        manifests[kind] = json.loads((CACHE_DIR / f"index_manifest{suffix}.json").read_text(encoding="utf-8"))
+    fingerprints = {paper: {"this": manifests[index_kind].get(paper),
+                            "reference": manifests[reference_index].get(paper)}
+                    for paper in run["index"]}
+    for paper, fp in fingerprints.items():
+        if fp["this"] is None or fp["this"] != fp["reference"]:
+            diffs.append(f"chunk fingerprint {paper}: {fp['this']} != {fp['reference']}")
+    return {
+        "reference_run": f"{reference_name}-{split}",
+        "compared": {"run": list(CHECKED_RUN_FIELDS), "settings": list(CHECKED_SETTINGS),
+                     "items": list(CHECKED_ITEM_FIELDS), "index": list(CHECKED_INDEX_FIELDS),
+                     "chunk_fingerprints": f"eval/cache/index_manifest-{index_kind}.json vs "
+                                           f"index_manifest-{reference_index}.json"},
+        "chunk_fingerprints": fingerprints,
+        "identical": not diffs,
+        "differences": diffs,
+    }
+
+
+def implementation_check_markdown(check):
+    lines = [
+        "## Implementation check (not a new result)",
+        "",
+        f"This run checks that the production code reproduces `{check['reference_run']}`, the "
+        "measured run it implements. It is not a new measurement and is not listed in the "
+        "compare files.",
+        "",
+        f"**Result: {'identical' if check['identical'] else 'DIFFERENT'}.** Compared: every "
+        "question's vector, rerank and context lists (paper, page, chunk id, score, rank), its "
+        "metrics, the aggregate metrics, cross-paper and unanswerable tables, page-class shares, "
+        "worst misses, the retrieval settings, the per-paper index counts and page classes, and "
+        "each paper's chunk fingerprint (embedding model and every chunk payload).",
+        "",
+        "| Paper | Chunk fingerprint (this run) | Same as reference |",
+        "|---|---|---|",
+    ]
+    for paper, fp in check["chunk_fingerprints"].items():
+        lines.append(f"| {paper} | `{(fp['this'] or 'missing')[:16]}…` | "
+                     f"{'yes' if fp['this'] == fp['reference'] else 'NO'} |")
+    if check["differences"]:
+        lines += ["", "Differences:", ""] + [f"- {d}" for d in check["differences"]]
+    lines.append("")
+    return lines
+
+
 # --------------------------------------------------------------- compare
 
 def write_compare(split):
     """results/compare-<split>.md over every variant run present for the split."""
     runs = []
     for name in VARIANTS:
+        if not VARIANTS[name].get("in_compare", True):
+            continue
         path = RESULTS_DIR / f"{name}-{split}.json"
         if path.exists():
             runs.append((name, json.loads(path.read_text(encoding="utf-8"))))
@@ -883,7 +1020,8 @@ def main(argv=None):
     started_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     log = lambda msg: print(msg, flush=True)  # noqa: E731
 
-    configure_environment(rerank_enabled=variant["rerank"] != "off",
+    configure_environment(rerank_enabled=(None if variant.get("rerank_env") == "unset"
+                                          else variant["rerank"] != "off"),
                           read_voyage_key=variant["network"])
 
     import voyageai
@@ -897,6 +1035,7 @@ def main(argv=None):
     from app.core.providers import voyage_client_options
     from app.rag import embedder, reranker, vector_store
     from app.services.library_questions import is_library_question
+    from app.services import reference_filter
     from app.services.pdf_loader import extract_pdf_pages
     from app.services.text_cleaner import clean_text
     import check_questions
@@ -952,7 +1091,7 @@ def main(argv=None):
         is_library_question=is_library_question, extract_pdf_pages=extract_pdf_pages,
         Filter=Filter, FieldCondition=FieldCondition, MatchValue=MatchValue,
         PointStruct=PointStruct, classify_page=check_questions.classify_page,
-        clean_text=clean_text)
+        clean_text=clean_text, reference_filter=reference_filter)
 
     pdfs = sorted(Path(args.papers).glob("*.pdf"))
     papers = check_questions.load_papers(args.papers)
@@ -1094,6 +1233,10 @@ def main(argv=None):
     if variant["index"] == "no-refs":
         pages_line += (" Candidate: reference-list pages not indexed, mixed pages indexed only up to "
                        "the References heading (check_questions.classify_page).")
+    elif variant["index"] == "production":
+        pages_line += (" Production indexer with its reference filter "
+                       "(app/services/reference_filter.py): the References heading page cut or "
+                       "dropped, then the citation-dense pages directly after it dropped.")
     run = {
         "run_name": run_name,
         "variant": args.variant,
@@ -1147,12 +1290,23 @@ def main(argv=None):
                      **{name: package_version(name) for name in ("voyageai", "qdrant-client", "pymupdf")}},
         "items": items,
     }
+    if variant.get("matches"):
+        run["implementation_check"] = implementation_check(run, variant["matches"], split,
+                                                           variant["index"])
     RESULTS_DIR.mkdir(exist_ok=True)
     (RESULTS_DIR / f"{run_name}.json").write_text(json.dumps(run, indent=1), encoding="utf-8")
     (RESULTS_DIR / f"{run_name}.md").write_text(markdown_summary(run), encoding="utf-8")
     write_compare(split)
     log(f"Done in {total_s:.0f} s. Results: eval/results/{run_name}.json and .md, "
         f"eval/results/compare-{split}.md")
+    check = run.get("implementation_check")
+    if check:
+        log(f"Implementation check against {check['reference_run']}: "
+            + ("IDENTICAL" if check["identical"] else f"{len(check['differences'])} DIFFERENCES"))
+        for line in check["differences"][:40]:
+            log(f"  {line}")
+        if not check["identical"]:
+            raise SystemExit(1)
 
 
 if __name__ == "__main__":

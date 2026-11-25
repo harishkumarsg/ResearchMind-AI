@@ -13,6 +13,12 @@ fills the rest in rank order, then restores rank order. These tests pin that
 behaviour, pin that single-paper selection is unchanged against a verbatim
 copy of the old loop, and pin every invariant the old loop guaranteed.
 
+The cases were written for, and reproduce the incident at, the 4000-character
+budget of the time. MAX_CONTEXT is now 6000 (retrieval eval, variant
+no-refs-ctx6000-rerank-off), so this module runs them with the budget patched
+back to TEST_BUDGET: they test the selection algorithm, whatever the budget.
+TestConfiguration checks the production value itself.
+
 Unit tests call _select_evidence directly. Endpoint tests drive /ask-stream
 with Voyage, Qdrant and Groq mocked — no real provider call is made.
 """
@@ -39,9 +45,9 @@ load_dotenv(os.path.join(BACKEND_DIR, ".env"))
 from fastapi.testclient import TestClient
 from qdrant_client.models import FieldCondition, Filter, MatchValue
 
+from app.api import ask_stream
 from app.api.ask_stream import (
     EVIDENCE_SEPARATOR,
-    MAX_CONTEXT,
     NO_ANSWER_RESPONSE,
     _select_evidence,
 )
@@ -56,6 +62,23 @@ USER_B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
 ETASR_ID = "11111111-1111-4111-8111-111111111111"
 EIAD_ID = "22222222-2222-4222-8222-222222222222"
 THIRD_ID = "33333333-3333-4333-8333-333333333333"
+
+#: The production budget, read before setUpModule patches it.
+PRODUCTION_MAX_CONTEXT = ask_stream.MAX_CONTEXT
+#: The budget every case below was written for. _select_evidence reads
+#: ask_stream.MAX_CONTEXT at call time, and setUpModule sets it to this.
+TEST_BUDGET = 4000
+MAX_CONTEXT = TEST_BUDGET
+
+_budget_patch = patch.object(ask_stream, "MAX_CONTEXT", TEST_BUDGET)
+
+
+def setUpModule():
+    _budget_patch.start()
+
+
+def tearDownModule():
+    _budget_patch.stop()
 
 #: "[Page N]\n" for a single-digit page — the fixed overhead of every block.
 LABEL = len("[Page 1]\n")
@@ -117,8 +140,11 @@ def reference_old_loop(filtered):
 # Unit tests: _select_evidence
 # ----------------------------------------------------------------------
 class TestConfiguration(unittest.TestCase):
-    def test_max_context_is_still_4000(self):
-        self.assertEqual(MAX_CONTEXT, 4000)
+    def test_production_max_context_is_6000(self):
+        self.assertEqual(PRODUCTION_MAX_CONTEXT, 6000)
+
+    def test_cases_run_at_the_budget_they_were_written_for(self):
+        self.assertEqual(ask_stream.MAX_CONTEXT, TEST_BUDGET)
 
 
 class TestProductionCase(unittest.TestCase):

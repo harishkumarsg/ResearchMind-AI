@@ -66,7 +66,11 @@ logger = logging.getLogger(__name__)
 
 SEARCH_LIMIT = 8
 TOP_CHUNKS = 4
-MAX_CONTEXT = 4000
+#: Characters of evidence handed to the model. Chunks are up to 1500
+#: characters, so at 4000 two long chunks could crowd out the other two of
+#: the top TOP_CHUNKS. Raised from 4000 as measured in the eval variant
+#: no-refs-ctx6000-rerank-off (backend/eval/results/compare-test.md).
+MAX_CONTEXT = 6000
 EVIDENCE_SEPARATOR = "\n\n"
 
 # Matches the page locators the model is instructed to emit. Deliberately

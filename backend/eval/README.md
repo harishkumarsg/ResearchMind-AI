@@ -151,3 +151,30 @@ Runs reported, in this order:
 The dev-only steps `no-refs` and `no-refs-top20-rerank10` (4000-character context) are
 not run on the test set. Test results go to `results/<variant>-test.json` and `.md`
 and to `results/compare-test.md`, with the same metrics as dev.
+
+## Implementation check (not a result)
+
+Added on 2026-11-25, after the test results, when `no-refs-ctx6000-rerank-off` was
+implemented in production code: the reference filter in
+`app/services/reference_filter.py` (applied by `_build_chunks_for_paper`),
+`ask_stream.MAX_CONTEXT = 6000`, and `RERANK_ENABLED` still off by default.
+
+`--variant impl-check` runs that production code as it is, from cached embeddings only
+(`--cache-only`, no Voyage call): the production indexer with its filter, production
+`MAX_CONTEXT`, `RERANK_ENABLED` unset. It then compares the run with
+`no-refs-ctx6000-rerank-off` field by field: every question's vector, rerank and context
+lists, all metrics and tables, the retrieval settings, the index counts, and each
+paper's chunk fingerprint. It exits non-zero on any difference.
+`results/impl-check-dev.md` and `results/impl-check-test.md` record the check: identical
+on both sets. It checks the code. It is not a new measurement, it changes nothing in the
+test results above, and it is left out of the compare files.
+
+Production's filter differs from the measured `classify_page` in one way: citation density
+is applied only to the run of pages directly after a References heading, so related-work
+pages and appendices after the reference list are never dropped. On these five papers both
+rules drop the same text, which the identical chunk fingerprints confirm.
+
+The measured variants now pin their own settings (`max_context=4000`,
+`drop_references=False`), so they still reproduce now that production uses 6000 and filters
+references. All six dev variants were re-run from the cache after that change and matched
+their committed results exactly.

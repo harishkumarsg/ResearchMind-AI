@@ -451,10 +451,12 @@ class TestAskUnchanged(unittest.TestCase):
         self.assertFalse(hasattr(ask_stream, "generate_answer"))
         self.assertFalse(hasattr(ask_stream, "generate"))
 
-    def test_ask_keeps_its_own_4000_character_evidence_budget(self):
+    def test_ask_keeps_its_own_6000_character_evidence_budget(self):
         from app.api.ask_stream import MAX_CONTEXT, SEARCH_LIMIT, TOP_CHUNKS
 
-        self.assertEqual(MAX_CONTEXT, 4000)
+        # 4000 until the retrieval eval's no-refs-ctx6000-rerank-off result
+        # (backend/eval/results/compare-test.md); changed on purpose there.
+        self.assertEqual(MAX_CONTEXT, 6000)
         self.assertEqual(SEARCH_LIMIT, 8)
         self.assertEqual(TOP_CHUNKS, 4)
 
