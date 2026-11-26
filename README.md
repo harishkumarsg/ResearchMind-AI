@@ -61,7 +61,7 @@ FastAPI backend — the only authorization boundary
 
 ## Tests
 
-1,595 backend tests (`unittest`) and 562 frontend tests (Vitest), counted from a local run on 2026-11-23. The backend suite runs fully offline: providers are mocked and persistence uses in-memory SQLite. Offline, 30 backend tests are skipped: 20 PostgreSQL lifecycle tests, 4 live-infrastructure tests, 3 deferred Qdrant acceptance tests, and 3 that need local PDFs or the Linux target platform.
+1,640 backend tests (`unittest`), counted from a local run on 2026-11-26, and 562 frontend tests (Vitest), counted on 2026-11-23. The backend suite runs fully offline: providers are mocked and persistence uses in-memory SQLite. Offline, 30 backend tests are skipped: 20 PostgreSQL lifecycle tests, 4 live-infrastructure tests, 3 deferred Qdrant acceptance tests, and 3 that need local PDFs or the Linux target platform.
 
 ```bash
 cd backend
@@ -80,11 +80,14 @@ The PostgreSQL lifecycle tests (`backend/tests/test_paper_lifecycle_postgres.py`
 
 Retrieval only: for each question, does the retrieval path return passages from the right paper and page? Answer quality is not measured here. Everything is in [`backend/eval/`](backend/eval/README.md).
 
-**Result.** Context hit is the share of answerable questions for which a gold page is among the passages handed to the model. On the held-out test set it was **‹before: to confirm›** with the production settings before this change and **96%** with the settings now in production: reference lists not indexed, reranking off, 6,000 characters of context.
-<!-- "before" depends on whether RERANK_ENABLED was true in production (Railway):
-     true  -> run baseline,   62% context hit
-     false -> run rerank-off, 88% context hit
-     Fill in once confirmed, and name the run. -->
+**Result.** Context hit is the share of answerable questions for which a gold page is among the passages handed to the model. On the held-out test set it was **88% (21/24)** with the production settings before this change and **96% (23/24)** with the settings now in production: reference lists not indexed, reranking off, 6,000 characters of context. Production ran with `RERANK_ENABLED=false`, so "before" is the `rerank-off` run.
+
+| Context hit | `baseline` (rerank on) | `rerank-off` (production before) | `no-refs-ctx6000-rerank-off` (production now) |
+|---|---|---|---|
+| Dev (35 answerable) | 32/35 (91.4%) | 31/35 (88.6%) | 34/35 (97.1%) |
+| Test (24 answerable) | 15/24 (62.5%) | 21/24 (87.5%) | 23/24 (95.8%) |
+
+The test set has only 24 answerable questions, so one question is about 4.2 percentage points: the improvement over production before is two questions. Reranking was one question better than `rerank-off` on dev and six worse on test.
 
 **Setup.** Five papers on industrial anomaly detection (75 pages; listed in `backend/eval/README.md`, PDFs not in the repo). 64 questions with page-level gold, split 38 for development and 26 for test (stratified by question type). The test set has 6 factual, 6 method, 4 results, 4 limitation, 4 cross-paper and 2 unanswerable items, so metrics are over **24** answerable questions. `run_retrieval_eval.py` indexes the papers with the production indexer and runs every question through the production `/ask-stream` retrieval code, with Voyage results cached.
 
