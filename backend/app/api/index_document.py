@@ -26,6 +26,7 @@ from app.services.metadata_extractor import (
     extract_keywords,
 )
 from app.services.pdf_loader import extract_pdf_pages
+from app.services.reference_filter import drop_reference_text
 from app.services.storage import fetch_pdf
 from app.services.text_cleaner import clean_text
 
@@ -53,7 +54,14 @@ def _clear_existing_points_for_paper(paper_id: str, owner_id: str) -> None:
     )
 
 
-def _build_chunks_for_paper(paper: Paper, pages: list) -> list:
+def _build_chunks_for_paper(paper: Paper, pages: list, *, drop_references: bool = True) -> list:
+    """Chunk payloads for one paper. Reference-list text is dropped first
+    (app/services/reference_filter.py), so it is neither embedded nor used
+    for the paper-level authors, abstract and keywords. drop_references=False
+    is the indexer as it was before that rule; the retrieval eval uses it to
+    reproduce its baseline, and production never passes it."""
+    if drop_references:
+        pages = drop_reference_text(pages)
     full_text = clean_text("\n".join(p.get("text", "") for p in pages))
     if len(full_text) < 1000:
         raise ValueError("Extracted text is too short to index")

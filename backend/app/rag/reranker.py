@@ -25,7 +25,11 @@ _client: Optional[voyageai.Client] = None
 
 
 def _rerank_enabled() -> bool:
-    # Keep cloud instances stable on low memory by default.
+    # Off by default. The retrieval eval's one-time test run measured this
+    # rerank (vector top 5, first 400 characters of each chunk) lowering the
+    # context hit to 62%, against 88% with it off (backend/eval/results/
+    # compare-test.md, runs baseline and rerank-off). Do not enable it in
+    # production without a new measurement.
     return os.environ.get("RERANK_ENABLED", "false").lower() == "true"
 
 
